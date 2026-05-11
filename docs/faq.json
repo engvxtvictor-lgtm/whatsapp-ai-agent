@@ -1,0 +1,17 @@
+[
+  {
+    "question": "Qual o horário de atendimento?",
+    "answer": "Atendemos de segunda a sexta, das 8h às 18h.",
+    "keywords": "horário, atendimento, funciona, abre, fecha"
+  },
+  {
+    "question": "Como cancelo meu pedido?",
+    "answer": "Acesse Minha Conta > Pedidos e clique em Cancelar.",
+    "keywords": "cancelar, cancelamento, pedido, desistir"
+  },
+  {
+    "question": "Qual o prazo de entrega?",
+    "answer": "O prazo é de 3 a 7 dias úteis para capitais.",
+    "keywords": "prazo, entrega, demora, dias, chegada, frete"
+  }
+]
