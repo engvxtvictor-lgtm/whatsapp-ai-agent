@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lúmina - Painel de Controle</title>
+    <!-- Google Fonts: Outfit (headings) e Inter (body) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome para ícones premium -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- CSS Customizado -->
+    <link rel="stylesheet" href="/frontend/style.css">
+</head>
+<body>
+
+    <div class="app-container">
+        
+        <!-- Sidebar ("Prateleira do Lado") -->
+        <aside class="sidebar">
+            <div class="sidebar-brand">
+                <i class="fa-solid fa-tooth gold-icon"></i>
+                <div class="brand-text">
+                    <h1>LÚMINA</h1>
+                    <span>Painel Administrativo</span>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <a href="#" class="nav-item active" data-tab="clients">
+                    <i class="fa-solid fa-users"></i>
+                    <span>Clientes & Fila</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="admins">
+                    <i class="fa-solid fa-user-shield"></i>
+                    <span>Administradores</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="campaigns">
+                    <i class="fa-solid fa-paper-plane"></i>
+                    <span>Campanhas & Follow-Up</span>
+                </a>
+            </nav>
+
+            <div class="sidebar-footer">
+                <div class="status-indicator">
+                    <span class="status-dot online"></span>
+                    <span>Agente WhatsApp Conectado</span>
+                </div>
+                <div class="version">v1.0.0</div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- Header Superior -->
+            <header class="main-header">
+                <div class="header-left">
+                    <h2 id="page-title">Clientes & Fila</h2>
+                    <p id="page-description">Gerenciamento e controle de mensagens de pacientes da Clínica Lúmina.</p>
+                </div>
+                <div class="header-right">
+                    <!-- Logotipo da Clínica Lúmina -->
+                    <div class="logo-container">
+                        <img src="/frontend/lumina-logo.jpg" alt="Lúmina Logo" class="lumina-logo">
+                    </div>
+                </div>
+            </header>
+
+            <!-- CONTEÚDO DAS ABAS -->
+            <div class="tab-content-container">
+
+                <!-- ABA 1: CLIENTES -->
+                <section id="tab-clients" class="tab-panel active">
+                    
+                    <!-- Cards de Métricas Rápidas -->
+                    <div class="metrics-grid">
+                        <div class="metric-card">
+                            <div class="metric-info">
+                                <h3>Total de Pacientes</h3>
+                                <p id="metric-total-clients">0</p>
+                            </div>
+                            <div class="metric-icon whatsapp-bg"><i class="fa-solid fa-user-group"></i></div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-info">
+                                <h3>Canal WhatsApp</h3>
+                                <p id="metric-wa-clients">0</p>
+                            </div>
+                            <div class="metric-icon wa-bg"><i class="fa-brands fa-whatsapp"></i></div>
+                        </div>
+                        <div class="metric-card">
+                            <div class="metric-info">
+                                <h3>Canal Instagram</h3>
+                                <p id="metric-ig-clients">0</p>
+                            </div>
+                            <div class="metric-icon ig-bg"><i class="fa-brands fa-instagram"></i></div>
+                        </div>
+                        <div class="metric-card highlighted-metric">
+                            <div class="metric-info">
+                                <h3>Selecionados p/ Campanha</h3>
+                                <p id="metric-selected-clients">0</p>
+                            </div>
+                            <div class="metric-icon gold-bg"><i class="fa-solid fa-square-check"></i></div>
+                        </div>
+                    </div>
+
+                    <!-- Barra de Controles de Busca e Filtros -->
+                    <div class="control-bar">
+                        <div class="search-box">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="client-search" placeholder="Buscar por Nome, CPF ou Telefone...">
+                        </div>
+                        
+                        <div class="filters-box">
+                            <select id="filter-service" class="filter-select">
+                                <option value="">Todos os Serviços</option>
+                                <option value="Limpeza">Limpeza</option>
+                                <option value="Clareamento">Clareamento</option>
+                                <option value="Implante">Implante</option>
+                                <option value="Canal">Tratamento de Canal</option>
+                                <option value="Aparelho">Aparelho Ortodôntico</option>
+                                <option value="Consulta">Consulta Geral</option>
+                            </select>
+
+                            <select id="filter-source" class="filter-select">
+                                <option value="">Todos os Canais</option>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="instagram">Instagram</option>
+                            </select>
+
+                            <button class="btn btn-gold" id="btn-add-client-modal">
+                                <i class="fa-solid fa-plus"></i> Novo Paciente
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Botão de Ação Rápida para Seleção em Lote -->
+                    <div class="batch-action-bar" style="display: none;">
+                        <span id="batch-selection-text">0 pacientes selecionados</span>
+                        <div class="batch-buttons">
+                            <button class="btn btn-secondary-outline btn-xs" id="btn-select-all">Selecionar Todos</button>
+                            <button class="btn btn-secondary-outline btn-xs" id="btn-clear-selection">Limpar Seleção</button>
+                            <button class="btn btn-gold btn-xs" id="btn-send-campaign-from-selection">
+                                <i class="fa-solid fa-paper-plane"></i> Criar Campanha p/ Selecionados
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Grid de Cards de Clientes -->
+                    <div class="clients-grid" id="clients-grid">
+                        <!-- Gerado Dinamicamente por app.js -->
+                    </div>
+                </section>
+
+                <!-- ABA 2: ADMINISTRADORES -->
+                <section id="tab-admins" class="tab-panel">
+                    
+                    <div class="tab-section-header">
+                        <div>
+                            <h3>Equipe da Clínica</h3>
+                            <p>Gerencie perfis administrativos e profissionais com acesso ao painel de controle.</p>
+                        </div>
+                        <button class="btn btn-gold" id="btn-add-admin-modal">
+                            <i class="fa-solid fa-user-plus"></i> Adicionar Administrador
+                        </button>
+                    </div>
+
+                    <div class="admins-grid" id="admins-grid">
+                        <!-- Gerado Dinamicamente por app.js -->
+                    </div>
+                </section>
+
+                <!-- ABA 3: CAMPANHAS & FOLLOW-UP -->
+                <section id="tab-campaigns" class="tab-panel">
+                    <div class="campaigns-layout">
+                        
+                        <!-- Painel Esquerdo: Envio de Campanhas -->
+                        <div class="campaign-card-panel">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-paper-plane gold-text"></i> Disparar Campanha Direcionada</h3>
+                                <p>Envie mensagens personalizadas de WhatsApp em massa para pacientes selecionados.</p>
+                            </div>
+
+                            <div class="campaign-selection-status card-alert">
+                                <div class="alert-icon"><i class="fa-solid fa-circle-info gold-text"></i></div>
+                                <div class="alert-text">
+                                    <h4 id="campaign-selected-count-title">Nenhum cliente selecionado</h4>
+                                    <p id="campaign-selected-count-desc">Volte à aba "Clientes & Fila" e marque os pacientes que devem receber esta mensagem.</p>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label>Modelos Rápidos de Mensagem</label>
+                                <div class="quick-templates">
+                                    <button class="template-pill" data-msg="Olá [NOME]! Identificamos que já faz 6 meses desde o seu último procedimento de [SERVIÇO]. Que tal agendarmos um retorno preventivo esta semana?">
+                                        Retorno de 6 meses
+                                    </button>
+                                    <button class="template-pill" data-msg="Olá [NOME]! Tudo bem? Estamos passando para confirmar sua consulta de acompanhamento de [SERVIÇO] amanhã às 14:00. Confirmado?">
+                                        Lembrete de Consulta
+                                    </button>
+                                    <button class="template-pill" data-msg="Olá [NOME]! A Clínica Lúmina está com novidades no setor de estética dental. Responda essa mensagem para garantir 10% de desconto no seu próximo clareamento!">
+                                        Promoção Estética
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="campaign-message">Mensagem da Campanha</label>
+                                <textarea id="campaign-message" rows="8" placeholder="Digite sua mensagem aqui... Use as tags [NOME] e [SERVIÇO] para personalização automática."></textarea>
+                                <span class="input-tip">A tag [NOME] será substituída pelo nome do paciente e [SERVIÇO] pelo procedimento correspondente.</span>
+                            </div>
+
+                            <button class="btn btn-gold btn-block btn-lg" id="btn-submit-campaign" disabled>
+                                <i class="fa-solid fa-rocket"></i> Disparar Campanha de WhatsApp
+                            </button>
+                        </div>
+
+                        <!-- Painel Direito: Regras de Follow-Up -->
+                        <div class="campaign-card-panel">
+                            <div class="panel-header">
+                                <h3><i class="fa-solid fa-clock gold-text"></i> Automação de Follow-Up</h3>
+                                <p>Configure lembretes pós-tratamento baseados no tipo de serviço odontológico.</p>
+                            </div>
+
+                            <div class="follow-up-rules">
+                                
+                                <!-- Regra 1 -->
+                                <div class="follow-up-card">
+                                    <div class="rule-header">
+                                        <div class="rule-title">
+                                            <span class="service-tag">Limpeza</span>
+                                            <h4>Lembrete Semestral</h4>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <p class="rule-description">Envia mensagem automática para agendar nova limpeza 6 meses (180 dias) após a última consulta.</p>
+                                    <div class="rule-footer">
+                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME]! Já faz 6 meses..."</span>
+                                    </div>
+                                </div>
+
+                                <!-- Regra 2 -->
+                                <div class="follow-up-card">
+                                    <div class="rule-header">
+                                        <div class="rule-title">
+                                            <span class="service-tag">Implante</span>
+                                            <h4>Acompanhamento Pós-Cirúrgico</h4>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox" checked>
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <p class="rule-description">Envia mensagem de cuidado pós-operatório 1 dia após a realização do procedimento cirúrgico.</p>
+                                    <div class="rule-footer">
+                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME], como está a recuperação..."</span>
+                                    </div>
+                                </div>
+
+                                <!-- Regra 3 -->
+                                <div class="follow-up-card">
+                                    <div class="rule-header">
+                                        <div class="rule-title">
+                                            <span class="service-tag">Clareamento</span>
+                                            <h4>Feedback de Sensibilidade</h4>
+                                        </div>
+                                        <label class="switch">
+                                            <input type="checkbox">
+                                            <span class="slider round"></span>
+                                        </label>
+                                    </div>
+                                    <p class="rule-description">Pergunta sobre sensibilidade e compartilha dicas de alimentação 3 dias após a sessão de clareamento.</p>
+                                    <div class="rule-footer">
+                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME], sentiu alguma sensibilidade..."</span>
+                                    </div>
+                                </div>
+
+                            </div>
+
+                            <button class="btn btn-secondary-outline btn-block" style="margin-top: 15px;">
+                                <i class="fa-solid fa-plus"></i> Adicionar Nova Regra de Follow-Up
+                            </button>
+
+                        </div>
+
+                    </div>
+                </section>
+
+            </div>
+
+        </main>
+
+    </div>
+
+    <!-- MODAL: NOVO CLIENTE -->
+    <div class="modal" id="modal-client">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-user-plus gold-text"></i> Adicionar Novo Paciente</h3>
+                <button class="modal-close" id="btn-close-client-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-add-client">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="client-name">Nome Completo</label>
+                        <input type="text" id="client-name" required placeholder="Ex: Ana Maria Silva">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="client-cpf">CPF</label>
+                            <input type="text" id="client-cpf" required placeholder="000.000.000-00">
+                        </div>
+                        <div class="form-group">
+                            <label for="client-phone">Número de WhatsApp (Celular)</label>
+                            <input type="text" id="client-phone" required placeholder="5511999999999">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="client-service">Procedimento / Serviço</label>
+                            <select id="client-service" required>
+                                <option value="">Selecione o serviço...</option>
+                                <option value="Limpeza">Limpeza</option>
+                                <option value="Clareamento">Clareamento</option>
+                                <option value="Implante">Implante</option>
+                                <option value="Canal">Tratamento de Canal</option>
+                                <option value="Aparelho">Aparelho Ortodôntico</option>
+                                <option value="Consulta">Consulta Geral</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="client-source">Canal de Contato</label>
+                            <select id="client-source" required>
+                                <option value="whatsapp">WhatsApp</option>
+                                <option value="instagram">Instagram</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-client-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-gold">Cadastrar Paciente</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NOVO ADMINISTRADOR -->
+    <div class="modal" id="modal-admin">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-user-shield gold-text"></i> Adicionar Administrador</h3>
+                <button class="modal-close" id="btn-close-admin-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-add-admin">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="admin-name">Nome Completo</label>
+                        <input type="text" id="admin-name" required placeholder="Ex: Dr. Felipe Costa">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-email">E-mail Corporativo</label>
+                        <input type="email" id="admin-email" required placeholder="Ex: felipe.costa@clinicalumina.com.br">
+                    </div>
+                    <div class="form-group">
+                        <label for="admin-role">Cargo / Especialidade</label>
+                        <select id="admin-role" required>
+                            <option value="">Selecione o cargo...</option>
+                            <option value="Administrador">Administrador</option>
+                            <option value="Atendente">Atendente de Recepção</option>
+                            <option value="Dentista">Dentista / Clínico Geral</option>
+                            <option value="Ortodontista">Ortodontista</option>
+                            <option value="Secretária">Secretária Executiva</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-admin-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-gold">Cadastrar Membro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- JS Customizado -->
+    <script src="/frontend/app.js"></script>
+</body>
+</html>
