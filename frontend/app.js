@@ -1,6 +1,43 @@
 // JavaScript - Painel de Controle Clínica Lúmina
 
 document.addEventListener("DOMContentLoaded", () => {
+    // 0. AUTENTICAÇÃO / LOGIN
+    const loginScreen = document.getElementById("login-screen");
+    const loginForm = document.getElementById("login-form");
+    const loginError = document.getElementById("login-error");
+    const btnLogout = document.getElementById("btn-logout");
+
+    function checkAuth() {
+        const isLogged = localStorage.getItem("admin_logged") === "true";
+        if (isLogged) {
+            loginScreen.classList.add("hidden");
+        } else {
+            loginScreen.classList.remove("hidden");
+        }
+    }
+
+    loginForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const email = document.getElementById("login-email").value.trim();
+        const password = document.getElementById("login-password").value.trim();
+
+        if (email === "admin@lumina.com" && password === "admin123") {
+            localStorage.setItem("admin_logged", "true");
+            loginError.style.display = "none";
+            loginScreen.classList.add("hidden");
+        } else {
+            loginError.style.display = "block";
+        }
+    });
+
+    btnLogout.addEventListener("click", (e) => {
+        e.preventDefault();
+        localStorage.removeItem("admin_logged");
+        checkAuth();
+    });
+
+    checkAuth();
+
     // Estado Global do Frontend
     let allClients = [];
     let allAdmins = [];
@@ -137,6 +174,14 @@ document.addEventListener("DOMContentLoaded", () => {
             const channelIcon = isWA ? "fa-brands fa-whatsapp" : "fa-brands fa-instagram";
             const channelLabel = isWA ? "WhatsApp" : "Instagram";
 
+            const upsellBadge = client.upsell_success 
+                ? `<span class="badge badge-upsell"><i class="fa-solid fa-star"></i> Upsell: ${client.upsell_service || 'Sim'}</span>`
+                : `<span class="badge badge-no-upsell">Sem Upsell</span>`;
+
+            const appointmentBadge = client.appointment_date
+                ? `<div class="client-appointment-badge"><i class="fa-regular fa-calendar-check"></i> ${client.appointment_date}</div>`
+                : `<div class="client-appointment-badge" style="color: #c5a880; border-color: rgba(197,168,128,0.2);"><i class="fa-regular fa-calendar-times"></i> Sem agendamento</div>`;
+
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
                 <div class="client-avatar-container">
@@ -153,7 +198,9 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span class="badge badge-service">
                         ${client.service}
                     </span>
+                    ${upsellBadge}
                 </div>
+                ${appointmentBadge}
             `;
 
             // Clique no Checkbox
@@ -349,9 +396,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // 6. GERENCIAMENTO DE MODAIS E CADASTROS
     // Novo Cliente Modal
+    const upsellSuccessSelect = document.getElementById("client-upsell-success");
+    const groupUpsellService = document.getElementById("group-upsell-service");
+    
+    upsellSuccessSelect.addEventListener("change", () => {
+        groupUpsellService.style.display = upsellSuccessSelect.value === "true" ? "block" : "none";
+    });
+
     btnAddClientModal.addEventListener("click", () => modalClient.classList.add("active"));
-    btnCloseClientModal.addEventListener("click", () => modalClient.classList.remove("active"));
-    btnCancelClientModal.addEventListener("click", () => modalClient.classList.remove("active"));
+    btnCloseClientModal.addEventListener("click", () => {
+        modalClient.classList.remove("active");
+        formAddClient.reset();
+        groupUpsellService.style.display = "none";
+    });
+    btnCancelClientModal.addEventListener("click", () => {
+        modalClient.classList.remove("active");
+        formAddClient.reset();
+        groupUpsellService.style.display = "none";
+    });
 
     formAddClient.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -361,8 +423,21 @@ document.addEventListener("DOMContentLoaded", () => {
         const phone = document.getElementById("client-phone").value;
         const service = document.getElementById("client-service").value;
         const source = document.getElementById("client-source").value;
+        
+        const appointment_date = document.getElementById("client-appointment-date").value || null;
+        const upsell_success = document.getElementById("client-upsell-success").value === "true";
+        const upsell_service = upsell_success ? (document.getElementById("client-upsell-service").value || null) : null;
 
-        const payload = { name, cpf, phone, service, source };
+        const payload = { 
+            name, 
+            cpf, 
+            phone, 
+            service, 
+            source,
+            appointment_date,
+            upsell_success,
+            upsell_service
+        };
 
         try {
             const response = await fetch("/api/clients", {
@@ -376,6 +451,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 allClients.unshift(newClient); // Adiciona no início da lista
                 renderClients();
                 formAddClient.reset();
+                groupUpsellService.style.display = "none";
                 modalClient.classList.remove("active");
             } else {
                 alert("Erro ao cadastrar paciente.");
@@ -453,11 +529,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function populateInitialDatabase() {
         const mockClients = [
-            { name: "Ana Maria Silva", cpf: "123.456.789-10", phone: "5511999999999", service: "Limpeza", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Ana" },
-            { name: "Carlos Eduardo Costa", cpf: "987.654.321-00", phone: "5511988888888", service: "Implante", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Carlos" },
-            { name: "Mariana Souza", cpf: "456.789.123-45", phone: "5511977777777", service: "Clareamento", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mariana" },
-            { name: "Guilherme Santos", cpf: "321.654.987-12", phone: "5511966666666", service: "Aparelho", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Guilherme" },
-            { name: "Beatriz Ramos", cpf: "654.123.987-00", phone: "5511955555555", service: "Canal", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz" }
+            { name: "Ana Maria Silva", cpf: "123.456.789-10", phone: "5511999999999", service: "Limpeza", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Ana", appointment_date: "25/05/2026 às 14:00", upsell_success: true, upsell_service: "Clareamento" },
+            { name: "Carlos Eduardo Costa", cpf: "987.654.321-00", phone: "5511988888888", service: "Implante", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Carlos", appointment_date: "28/05/2026 às 10:30", upsell_success: false, upsell_service: null },
+            { name: "Mariana Souza", cpf: "456.789.123-45", phone: "5511977777777", service: "Clareamento", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mariana", appointment_date: "01/06/2026 às 16:00", upsell_success: true, upsell_service: "Profilaxia" },
+            { name: "Guilherme Santos", cpf: "321.654.987-12", phone: "5511966666666", service: "Aparelho", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Guilherme", appointment_date: null, upsell_success: false, upsell_service: null },
+            { name: "Beatriz Ramos", cpf: "654.123.987-00", phone: "5511955555555", service: "Canal", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz", appointment_date: null, upsell_success: false, upsell_service: null }
         ];
 
         const mockAdmins = [
