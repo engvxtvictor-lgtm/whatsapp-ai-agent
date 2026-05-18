@@ -2,12 +2,12 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from contextlib import asynccontextmanager
-from app.api.webhook import router as webhook_router
-from app.api.dashboard import router as dashboard_router
-import app.models  # Garante que os modelos sejam carregados para criação das tabelas
-from app.core.database import create_tables
-from app.core.config import settings
-from app.utils.logger import logger
+from backend.agent.api.webhook import router as webhook_router
+from backend.agent.api.dashboard import router as dashboard_router
+import backend.system.models  # Garante que os modelos sejam carregados para criação das tabelas
+from backend.system.database import create_tables
+from backend.system.config import settings
+from backend.system.logger import logger
 
 
 @asynccontextmanager

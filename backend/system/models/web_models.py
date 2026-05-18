@@ -1,7 +1,8 @@
 from datetime import datetime
-from sqlalchemy import String, DateTime
+from typing import Optional
+from sqlalchemy import String, DateTime, Boolean
 from sqlalchemy.orm import Mapped, mapped_column
-from app.core.database import Base
+from backend.system.database import Base
 
 
 class ClientWeb(Base):
@@ -14,6 +15,12 @@ class ClientWeb(Base):
     source: Mapped[str] = mapped_column(String(20), default="whatsapp")  # whatsapp ou instagram
     service: Mapped[str] = mapped_column(String(50), nullable=False)      # Clareamento, Limpeza, Canal, Implante, etc.
     profile_pic: Mapped[str] = mapped_column(String(255), nullable=True)
+    
+    # Novos campos para agendamento e upsell
+    appointment_date: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Horário (dia) desejado para consulta
+    upsell_success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se conseguiu fazer upsell
+    upsell_service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)   # Qual foi o serviço do upsell
+    
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

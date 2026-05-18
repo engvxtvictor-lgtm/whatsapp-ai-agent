@@ -3,10 +3,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from app.core.database import get_db
-from app.models.web_models import ClientWeb, AdminWeb
-from app.services import whatsapp
-from app.utils.logger import logger
+from backend.system.database import get_db
+from backend.system.models.web_models import ClientWeb, AdminWeb
+from backend.agent.services import whatsapp
+from backend.system.logger import logger
 
 router = APIRouter(prefix="/api")
 
@@ -20,6 +20,11 @@ class ClientSchema(BaseModel):
     source: str = "whatsapp"
     service: str
     profile_pic: Optional[str] = None
+    
+    # Novos campos de agendamento e upsell
+    appointment_date: Optional[str] = None
+    upsell_success: bool = False
+    upsell_service: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -57,7 +62,10 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         phone=client_data.phone,
         source=client_data.source,
         service=client_data.service,
-        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}"
+        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}",
+        appointment_date=client_data.appointment_date,
+        upsell_success=client_data.upsell_success,
+        upsell_service=client_data.upsell_service
     )
     db.add(new_client)
     await db.commit()
