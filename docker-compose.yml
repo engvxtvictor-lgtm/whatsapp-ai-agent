@@ -1,4 +1,4 @@
-version: "3.8"
+name: clinica-lumina
 
 services:
   # Banco de Dados PostgreSQL
