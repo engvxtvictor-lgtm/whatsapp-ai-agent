@@ -33,3 +33,14 @@ class AdminWeb(Base):
     role: Mapped[str] = mapped_column(String(50), nullable=False)        # Administrador, Atendente, Dentista, etc.
     avatar: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ServiceWeb(Base):
+    __tablename__ = "web_services"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)       # Nome do procedimento (ex: Clareamento, Limpeza)
+    price: Mapped[float] = mapped_column(nullable=False)                 # Preço médio do serviço
+    necessity: Mapped[str] = mapped_column(String(255), nullable=False)  # Necessidade/Motivação para ofertar (ex: indicação estética)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+

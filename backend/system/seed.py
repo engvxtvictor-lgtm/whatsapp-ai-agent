@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from sqlalchemy import select
 from backend.system.database import AsyncSession, engine, Base
-from backend.system.models.web_models import ClientWeb, AdminWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb
 
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
@@ -81,6 +81,37 @@ async def seed_db():
             )
         ]
         session.add_all(clients)
+
+        # Criando serviços padrão
+        print("Criando servicos padrao...")
+        services = [
+            ServiceWeb(
+                name="Limpeza Completa",
+                price=150.00,
+                necessity="Recomendado realizar a cada 6 meses para remover tartaro e placas bacterianas, prevenindo gengivite e mantendo a saude bucal em dia."
+            ),
+            ServiceWeb(
+                name="Clareamento Dental",
+                price=600.00,
+                necessity="Indicado para pacientes que buscam melhorar a estetica do sorriso, clarear dentes amarelados ou remover manchas externas."
+            ),
+            ServiceWeb(
+                name="Aparelho Ortodontico",
+                price=1500.00,
+                necessity="Indicado para alinhar dentes tortos ou apinhados, corrigir a mordida desalinhada e melhorar a harmonia e funcionalidade da arcada dentaria."
+            ),
+            ServiceWeb(
+                name="Implante Dentario",
+                price=2500.00,
+                necessity="Indicado para reabilitar dentes ausentes, permitindo recuperar a mastigacao perfeita e a estetica do sorriso com uma protese fixa ultra-resistente."
+            ),
+            ServiceWeb(
+                name="Protese Provisoria",
+                price=400.00,
+                necessity="Indicada para proteger o dente preparado e garantir a estetica e mastigacao temporaria enquanto a protese definitiva esta sendo fabricada no laboratorio."
+            )
+        ]
+        session.add_all(services)
         await session.commit()
             
     print("Semeadura concluida!")
