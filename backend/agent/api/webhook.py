@@ -42,6 +42,31 @@ async def handle(phone: str, text: str):
     # 2. consulta IA
     context = faq_service.get_context(text)
     response, confidence, metadata = await ai_service.get_response(text, session["history"], context)
+    
+    # Se a IA capturou um novo horario, verifica se ha conflito com consultas ja confirmadas
+    if metadata and metadata.get("appointment_date"):
+        new_date = metadata["appointment_date"]
+        if new_date != session.get("appointment_date"):
+            async with AsyncSession() as db:
+                try:
+                    stmt = select(ClientWeb).where(
+                        ClientWeb.appointment_date == new_date,
+                        ClientWeb.status == "confirmed"
+                    )
+                    result = await db.execute(stmt)
+                    conflict = result.scalars().first()
+                    
+                    if conflict:
+                        logger.info(f"Conflito de horario detectado para {new_date}. Solicitando novo horario a IA...")
+                        temp_history = session["history"] + [
+                            {"role": "system", "content": f"O horario '{new_date}' ja esta reservado por outro paciente com consulta confirmada. Avise o cliente educadamente que esse horario ja esta ocupado e peca para ele sugerir outro dia ou horario."}
+                        ]
+                        response, confidence, metadata = await ai_service.get_response(text, temp_history, context)
+                        if metadata:
+                            metadata["appointment_date"] = None
+                except Exception as e:
+                    logger.error(f"Erro ao verificar conflito de horario: {e}")
+
     session["ai_attempts"] += 1
 
     # Atualiza dados da sessão caso a IA tenha capturado novos metadados
@@ -78,7 +103,7 @@ async def handle(phone: str, text: str):
                 existing = result.scalars().first()
                 
                 if not existing:
-                    logger.info(f"Dados completos capturados. Registrando agendamento de {session['name']} no banco de dados...")
+                    logger.info(f"Dados completos capturados. Registrando agendamento pendente de {session['name']} no banco de dados...")
                     new_client = ClientWeb(
                         name=session["name"],
                         cpf=session["cpf"],
@@ -88,22 +113,23 @@ async def handle(phone: str, text: str):
                         profile_pic=f"https://api.dicebear.com/7.x/adventurer/svg?seed={session['name']}",
                         appointment_date=session["appointment_date"],
                         upsell_success=session.get("upsell_success", False),
-                        upsell_service=session.get("upsell_service")
+                        upsell_service=session.get("upsell_service"),
+                        status="pending"
                     )
                     db.add(new_client)
                     await db.commit()
-                    logger.info("Agendamento registrado com sucesso!")
+                    logger.info("Agendamento registrado como pendente com sucesso!")
                     
-                    # Notifica no WhatsApp a confirmação estrita do agendamento
+                    # Notifica no WhatsApp a solicitacao de agendamento em analise
                     confirm_msg = (
-                        f"✅ *Consulta Confirmada!*\n\n"
-                        f"Olá *{session['name']}*, seu agendamento de *{session['service']}* foi registrado com sucesso!\n"
-                        f"📅 *Data/Hora:* {session['appointment_date']}\n"
+                        f"📅 *Agendamento Solicitado!*\n\n"
+                        f"Olá *{session['name']}*, sua sugestão de consulta para *{session['service']}* foi enviada à nossa equipe.\n"
+                        f"📅 *Data/Hora Sugerida:* {session['appointment_date']}\n"
                     )
                     if session.get("upsell_success") and session.get("upsell_service"):
                         confirm_msg += f"➕ *Serviço Adicional (Upsell):* {session['upsell_service']}\n"
                     
-                    confirm_msg += "\nTe aguardamos na clínica! Qualquer dúvida, estamos à disposição. 😊"
+                    confirm_msg += "\nSua consulta será analisada e confirmada em até *24 horas* diretamente aqui no chat! Te avisaremos assim que for aprovada. 😊"
                     await whatsapp.send_message(phone, confirm_msg)
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")

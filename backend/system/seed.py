@@ -55,7 +55,8 @@ async def seed_db():
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo",
                 appointment_date="25/05/2026 as 14:00",
                 upsell_success=True,
-                upsell_service="Limpeza Completa"
+                upsell_service="Limpeza Completa",
+                status="confirmed"
             ),
             ClientWeb(
                 name="Beatriz Santos",
@@ -66,7 +67,8 @@ async def seed_db():
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz",
                 appointment_date="28/05/2026 as 10:30",
                 upsell_success=False,
-                upsell_service=None
+                upsell_service=None,
+                status="pending"
             ),
             ClientWeb(
                 name="Felipe Oliveira",
@@ -77,7 +79,8 @@ async def seed_db():
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe",
                 appointment_date="01/06/2026 as 16:00",
                 upsell_success=True,
-                upsell_service="Protese Provisoria"
+                upsell_service="Protese Provisoria",
+                status="confirmed"
             )
         ]
         session.add_all(clients)

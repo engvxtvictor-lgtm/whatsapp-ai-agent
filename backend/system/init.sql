@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS web_clients (
     appointment_date VARCHAR(100),
     upsell_success BOOLEAN DEFAULT FALSE NOT NULL,
     upsell_service VARCHAR(100),
+    status VARCHAR(20) DEFAULT 'pending' NOT NULL,
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -45,11 +46,11 @@ VALUES
 ('Mariana Lima', 'mariana.lima@odontoclinic.com', 'Atendente', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service)
+INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service, status)
 VALUES 
-('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento Dental', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Limpeza Completa'),
-('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Limpeza e Profilaxia', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL),
-('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante Dentario', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Protese Provisoria')
+('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento Dental', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Limpeza Completa', 'confirmed'),
+('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Limpeza e Profilaxia', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL, 'pending'),
+('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante Dentario', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Protese Provisoria', 'confirmed')
 ON CONFLICT DO NOTHING;
 
 INSERT INTO web_services (name, price, necessity)

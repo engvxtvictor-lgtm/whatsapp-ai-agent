@@ -182,8 +182,38 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? `<div class="client-appointment-badge"><i class="fa-regular fa-calendar-check"></i> ${client.appointment_date}</div>`
                 : `<div class="client-appointment-badge" style="color: #c5a880; border-color: rgba(197,168,128,0.2);"><i class="fa-regular fa-calendar-times"></i> Sem agendamento</div>`;
 
+            const statusLabels = {
+                pending: "Pendente",
+                confirmed: "Confirmado",
+                cancelled: "Recusado"
+            };
+            const statusClass = `status-${client.status || 'pending'}`;
+            const statusLabel = statusLabels[client.status || 'pending'] || "Pendente";
+            const statusBadgeHtml = `<span class="client-status-badge ${statusClass}">${statusLabel}</span>`;
+
+            let actionsHtml = "";
+            if ((client.status || "pending") === "pending" && client.appointment_date) {
+                actionsHtml = `
+                    <div class="client-actions">
+                        <button class="btn-action-confirm" title="Confirmar Agendamento"><i class="fa-solid fa-check"></i> Aceitar</button>
+                        <button class="btn-action-cancel" title="Recusar Agendamento"><i class="fa-solid fa-xmark"></i> Recusar</button>
+                    </div>
+                `;
+            }
+
+            const iaToggleHtml = `
+                <div class="client-ia-toggle">
+                    <span class="toggle-label"><i class="fa-solid fa-robot"></i> IA Comercial</span>
+                    <label class="switch">
+                        <input type="checkbox" class="ia-toggle-checkbox" ${client.ai_active ? 'checked' : ''}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
+                ${statusBadgeHtml}
                 <div class="client-avatar-container">
                     <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar">
                 </div>
@@ -201,6 +231,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     ${upsellBadge}
                 </div>
                 ${appointmentBadge}
+                ${actionsHtml}
+                ${iaToggleHtml}
             `;
 
             // Clique no Checkbox
@@ -210,8 +242,93 @@ document.addEventListener("DOMContentLoaded", () => {
                 toggleClientSelection(client.id, checkbox.checked);
             });
 
-            // Clique no Card completo (alterna seleção)
-            card.addEventListener("click", () => {
+            // Clique no toggle da IA
+            const iaCheckbox = card.querySelector(".ia-toggle-checkbox");
+            iaCheckbox.addEventListener("click", async (e) => {
+                e.stopPropagation(); // Evita selecionar o card
+                const checked = iaCheckbox.checked;
+                try {
+                    const response = await fetch(`/api/sessions/${client.phone}/toggle-ai`, {
+                        method: "PUT"
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        client.ai_active = data.ai_active;
+                    } else {
+                        iaCheckbox.checked = !checked;
+                        alert("Falha ao alternar status da IA Comercial.");
+                    }
+                } catch (error) {
+                    console.error("Erro toggle AI:", error);
+                    iaCheckbox.checked = !checked;
+                    alert("Erro de conexao com o servidor.");
+                }
+            });
+
+            // Acoes de confirmar/recusar agendamento
+            if ((client.status || "pending") === "pending" && client.appointment_date) {
+                const btnConfirm = card.querySelector(".btn-action-confirm");
+                const btnCancel = card.querySelector(".btn-action-cancel");
+
+                btnConfirm.addEventListener("click", async (e) => {
+                    e.stopPropagation(); // Evita selecionar o card
+                    const loggedAdminName = "Dra. Ana Souza"; // admin padrao
+                    btnConfirm.disabled = true;
+                    btnConfirm.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Aceitando...`;
+
+                    try {
+                        const response = await fetch(`/api/clients/${client.id}/confirm`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ admin_name: loggedAdminName })
+                        });
+                        if (response.ok) {
+                            client.status = "confirmed";
+                            loadData(); // Recarrega lista
+                        } else {
+                            alert("Falha ao confirmar consulta.");
+                            btnConfirm.disabled = false;
+                            btnConfirm.innerHTML = `<i class="fa-solid fa-check"></i> Aceitar`;
+                        }
+                    } catch (error) {
+                        console.error("Erro confirmar consulta:", error);
+                        alert("Erro de conexao com o servidor.");
+                        btnConfirm.disabled = false;
+                        btnConfirm.innerHTML = `<i class="fa-solid fa-check"></i> Aceitar`;
+                    }
+                });
+
+                btnCancel.addEventListener("click", async (e) => {
+                    e.stopPropagation(); // Evita selecionar o card
+                    btnCancel.disabled = true;
+                    btnCancel.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Recusando...`;
+
+                    try {
+                        const response = await fetch(`/api/clients/${client.id}/cancel`, {
+                            method: "PUT"
+                        });
+                        if (response.ok) {
+                            client.status = "cancelled";
+                            loadData(); // Recarrega lista
+                        } else {
+                            alert("Falha ao recusar consulta.");
+                            btnCancel.disabled = false;
+                            btnCancel.innerHTML = `<i class="fa-solid fa-xmark"></i> Recusar`;
+                        }
+                    } catch (error) {
+                        console.error("Erro recusar consulta:", error);
+                        alert("Erro de conexao com o servidor.");
+                        btnCancel.disabled = false;
+                        btnCancel.innerHTML = `<i class="fa-solid fa-xmark"></i> Recusar`;
+                    }
+                });
+            }
+
+            // Clique no Card completo (alterna selecao se clicar fora dos toggles/actions)
+            card.addEventListener("click", (e) => {
+                if (e.target.closest('.client-ia-toggle') || e.target.closest('.client-actions') || e.target.closest('.client-card-select')) {
+                    return;
+                }
                 const newStatus = !selectedClients.has(client.id);
                 checkbox.checked = newStatus;
                 toggleClientSelection(client.id, newStatus);
@@ -529,11 +646,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     async function populateInitialDatabase() {
         const mockClients = [
-            { name: "Ana Maria Silva", cpf: "123.456.789-10", phone: "5511999999999", service: "Limpeza", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Ana", appointment_date: "25/05/2026 às 14:00", upsell_success: true, upsell_service: "Clareamento" },
-            { name: "Carlos Eduardo Costa", cpf: "987.654.321-00", phone: "5511988888888", service: "Implante", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Carlos", appointment_date: "28/05/2026 às 10:30", upsell_success: false, upsell_service: null },
-            { name: "Mariana Souza", cpf: "456.789.123-45", phone: "5511977777777", service: "Clareamento", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mariana", appointment_date: "01/06/2026 às 16:00", upsell_success: true, upsell_service: "Profilaxia" },
-            { name: "Guilherme Santos", cpf: "321.654.987-12", phone: "5511966666666", service: "Aparelho", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Guilherme", appointment_date: null, upsell_success: false, upsell_service: null },
-            { name: "Beatriz Ramos", cpf: "654.123.987-00", phone: "5511955555555", service: "Canal", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz", appointment_date: null, upsell_success: false, upsell_service: null }
+            { name: "Ana Maria Silva", cpf: "123.456.789-10", phone: "5511999999999", service: "Limpeza", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Ana", appointment_date: "25/05/2026 às 14:00", upsell_success: true, upsell_service: "Clareamento", status: "confirmed" },
+            { name: "Carlos Eduardo Costa", cpf: "987.654.321-00", phone: "5511988888888", service: "Implante", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Carlos", appointment_date: "28/05/2026 às 10:30", upsell_success: false, upsell_service: null, status: "confirmed" },
+            { name: "Mariana Souza", cpf: "456.789.123-45", phone: "5511977777777", service: "Clareamento", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Mariana", appointment_date: "01/06/2026 às 16:00", upsell_success: true, upsell_service: "Profilaxia", status: "confirmed" },
+            { name: "Guilherme Santos", cpf: "321.654.987-12", phone: "5511966666666", service: "Aparelho", source: "whatsapp", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Guilherme", appointment_date: null, upsell_success: false, upsell_service: null, status: "pending" },
+            { name: "Beatriz Ramos", cpf: "654.123.987-00", phone: "5511955555555", service: "Canal", source: "instagram", profile_pic: "https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz", appointment_date: null, upsell_success: false, upsell_service: null, status: "pending" }
         ];
 
         const mockAdmins = [

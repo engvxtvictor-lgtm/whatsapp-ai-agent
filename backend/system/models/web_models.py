@@ -20,6 +20,7 @@ class ClientWeb(Base):
     appointment_date: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Horário (dia) desejado para consulta
     upsell_success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se conseguiu fazer upsell
     upsell_service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)   # Qual foi o serviço do upsell
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending, confirmed, cancelled
     
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
