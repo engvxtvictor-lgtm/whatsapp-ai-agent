@@ -50,7 +50,8 @@ async function conectar() {
     if (!text) return
     console.log("Mensagem de " + phone + ": " + text)
     try {
-      await fetch("http://localhost:8000/webhook/message", {
+      const backendUrl = process.env.BACKEND_URL || "http://localhost:8000"
+      await fetch(`${backendUrl}/webhook/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone: phone, message: text })

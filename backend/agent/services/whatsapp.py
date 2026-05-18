@@ -2,13 +2,11 @@ import httpx
 from backend.system.config import settings
 from backend.system.logger import logger
 
-BAILEYS_URL = "http://localhost:3000/send"
-
-
 async def send_message(phone: str, text: str) -> bool:
     async with httpx.AsyncClient(timeout=10) as client:
         try:
-            r = await client.post(BAILEYS_URL, json={"phone": phone, "text": text})
+            url = f"{settings.WHATSAPP_API_URL}/send"
+            r = await client.post(url, json={"phone": phone, "text": text})
             logger.info(f"Mensagem enviada para {phone[:6]}***")
             return r.status_code == 200
         except Exception as e:

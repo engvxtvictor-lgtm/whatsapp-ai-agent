@@ -13,6 +13,7 @@ class Settings(BaseSettings):
 
     HUMAN_PHONE: str
     MAX_AI_ATTEMPTS: int = 3
+    WHATSAPP_API_URL: str = "http://localhost:3000"
 
     class Config:
         env_file = ".env"

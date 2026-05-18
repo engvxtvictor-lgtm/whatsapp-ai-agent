@@ -1,0 +1,84 @@
+version: "3.8"
+
+services:
+  # Banco de Dados PostgreSQL
+  db:
+    image: postgres:15-alpine
+    container_name: lumina-db
+    restart: always
+    environment:
+      - POSTGRES_DB=agent_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/system/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agent_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis para Sessões do WhatsApp
+  redis:
+    image: redis:7-alpine
+    container_name: lumina-redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI e Frontend Estático
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: lumina-backend
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/agent_db
+      - REDIS_URL=redis://redis:6379
+      - GROQ_API_KEY=mock-api-key-value-for-dashboard-testing
+      - GROQ_MODEL=llama3-8b-8192
+      - AI_CONFIDENCE_THRESHOLD=0.70
+      - SESSION_TTL_SECONDS=3600
+      - HUMAN_PHONE=5511999999999
+      - MAX_AI_ATTEMPTS=3
+      - WHATSAPP_API_URL=http://baileys:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Serviço Baileys WhatsApp Node.js
+  baileys:
+    build:
+      context: ./baileys
+      dockerfile: Dockerfile
+    container_name: lumina-baileys
+    restart: always
+    ports:
+      - "3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./baileys/auth:/app/auth
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
