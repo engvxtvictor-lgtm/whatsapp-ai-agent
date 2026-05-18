@@ -253,65 +253,11 @@
                                 <p>Configure lembretes pós-tratamento baseados no tipo de serviço odontológico.</p>
                             </div>
 
-                            <div class="follow-up-rules">
-                                
-                                <!-- Regra 1 -->
-                                <div class="follow-up-card">
-                                    <div class="rule-header">
-                                        <div class="rule-title">
-                                            <span class="service-tag">Limpeza</span>
-                                            <h4>Lembrete Semestral</h4>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox" checked>
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                    <p class="rule-description">Envia mensagem automática para agendar nova limpeza 6 meses (180 dias) após a última consulta.</p>
-                                    <div class="rule-footer">
-                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME]! Já faz 6 meses..."</span>
-                                    </div>
-                                </div>
-
-                                <!-- Regra 2 -->
-                                <div class="follow-up-card">
-                                    <div class="rule-header">
-                                        <div class="rule-title">
-                                            <span class="service-tag">Implante</span>
-                                            <h4>Acompanhamento Pós-Cirúrgico</h4>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox" checked>
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                    <p class="rule-description">Envia mensagem de cuidado pós-operatório 1 dia após a realização do procedimento cirúrgico.</p>
-                                    <div class="rule-footer">
-                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME], como está a recuperação..."</span>
-                                    </div>
-                                </div>
-
-                                <!-- Regra 3 -->
-                                <div class="follow-up-card">
-                                    <div class="rule-header">
-                                        <div class="rule-title">
-                                            <span class="service-tag">Clareamento</span>
-                                            <h4>Feedback de Sensibilidade</h4>
-                                        </div>
-                                        <label class="switch">
-                                            <input type="checkbox">
-                                            <span class="slider round"></span>
-                                        </label>
-                                    </div>
-                                    <p class="rule-description">Pergunta sobre sensibilidade e compartilha dicas de alimentação 3 dias após a sessão de clareamento.</p>
-                                    <div class="rule-footer">
-                                        <span><i class="fa-regular fa-message"></i> Template: "Olá [NOME], sentiu alguma sensibilidade..."</span>
-                                    </div>
-                                </div>
-
+                            <div class="follow-up-rules" id="follow-up-rules-container">
+                                <!-- Gerado Dinamicamente por app.js -->
                             </div>
 
-                            <button class="btn btn-secondary-outline btn-block" style="margin-top: 15px;">
+                            <button class="btn btn-secondary-outline btn-block" id="btn-add-followup-modal" style="margin-top: 15px;">
                                 <i class="fa-solid fa-plus"></i> Adicionar Nova Regra de Follow-Up
                             </button>
 
@@ -428,6 +374,51 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary-outline" id="btn-cancel-admin-modal">Cancelar</button>
                     <button type="submit" class="btn btn-gold">Cadastrar Membro</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NOVA REGRA DE FOLLOW-UP -->
+    <div class="modal" id="modal-followup">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-clock gold-text"></i> Criar Nova Automação de Follow-Up</h3>
+                <button class="modal-close" id="btn-close-followup-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-add-followup">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="followup-name">Nome da Automação (Regra)</label>
+                        <input type="text" id="followup-name" required placeholder="Ex: Acompanhamento de Aparelho">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="followup-service">Serviço / Procedimento Gatilho</label>
+                            <select id="followup-service" required>
+                                <option value="">Selecione o serviço...</option>
+                                <option value="Limpeza">Limpeza</option>
+                                <option value="Clareamento">Clareamento</option>
+                                <option value="Implante">Implante</option>
+                                <option value="Canal">Tratamento de Canal</option>
+                                <option value="Aparelho">Aparelho Ortodôntico</option>
+                                <option value="Consulta">Consulta Geral</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="followup-delay">Delay / Atraso (em dias)</label>
+                            <input type="number" id="followup-delay" required min="1" max="365" placeholder="Ex: 3">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="followup-template">Template da Mensagem</label>
+                        <textarea id="followup-template" rows="5" required placeholder="Ex: Olá [NOME]! Como está o seu novo aparelho? Queremos garantir seu total conforto..."></textarea>
+                        <span class="input-tip">Utilize [NOME] e [SERVIÇO] para personalização dinâmica automática.</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-followup-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-gold">Criar Automação</button>
                 </div>
             </form>
         </div>

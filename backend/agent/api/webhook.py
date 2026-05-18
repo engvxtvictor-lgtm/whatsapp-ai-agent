@@ -30,18 +30,30 @@ async def handle(phone: str, text: str):
     if session["escalated"]:
         return
 
-    # 1. tenta FAQ
-    answer, score = faq_service.search_faq(text)
+    # Censura CPF na entrada para a IA/Histórico, mas captura o CPF completo para o banco de dados
+    censored_text, detected_cpf = ai_service.extract_and_censor_cpf(text)
+    if detected_cpf:
+        logger.info(f"CPF detectado e censurado para a IA: {detected_cpf[:5]}******")
+        session["cpf"] = detected_cpf
+
+    # Detecta se veio do Instagram pela mensagem inicial (Deep link do ManyChat)
+    lower_text = text.lower()
+    if "instagram" in lower_text or "insta" in lower_text:
+        logger.info(f"Origem do cliente detectada como INSTAGRAM via mensagem inicial!")
+        session["source"] = "instagram"
+
+    # 1. tenta FAQ usando o texto censurado
+    answer, score = faq_service.search_faq(censored_text)
     if answer and score >= 0.6:
         await whatsapp.send_message(phone, answer)
-        session = await sess.add_to_history(session, "user", text)
+        session = await sess.add_to_history(session, "user", censored_text)
         session = await sess.add_to_history(session, "assistant", answer)
         await sess.save_session(phone, session)
         return
 
-    # 2. consulta IA
-    context = faq_service.get_context(text)
-    response, confidence, metadata = await ai_service.get_response(text, session["history"], context)
+    # 2. consulta IA usando o texto censurado
+    context = faq_service.get_context(censored_text)
+    response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context)
     
     # Se a IA capturou um novo horario, verifica se ha conflito com consultas ja confirmadas
     if metadata and metadata.get("appointment_date"):
@@ -61,7 +73,7 @@ async def handle(phone: str, text: str):
                         temp_history = session["history"] + [
                             {"role": "system", "content": f"O horario '{new_date}' ja esta reservado por outro paciente com consulta confirmada. Avise o cliente educadamente que esse horario ja esta ocupado e peca para ele sugerir outro dia ou horario."}
                         ]
-                        response, confidence, metadata = await ai_service.get_response(text, temp_history, context)
+                        response, confidence, metadata = await ai_service.get_response(censored_text, temp_history, context)
                         if metadata:
                             metadata["appointment_date"] = None
                 except Exception as e:
@@ -73,13 +85,17 @@ async def handle(phone: str, text: str):
     if metadata:
         for key in ["name", "cpf", "service", "appointment_date", "upsell_success", "upsell_service"]:
             if metadata.get(key) is not None and metadata.get(key) != "":
+                if key == "cpf":
+                    # Evita sobrescrever o CPF completo na sessão caso a IA devolva a versão censurada
+                    if "*" in str(metadata[key]):
+                        continue
                 session[key] = metadata[key]
 
     if confidence >= settings.AI_CONFIDENCE_THRESHOLD:
         await whatsapp.send_message(phone, response)
     elif session["ai_attempts"] >= settings.MAX_AI_ATTEMPTS or confidence < 0.3:
         await whatsapp.send_escalation(phone)
-        await whatsapp.notify_agent(phone, text)
+        await whatsapp.notify_agent(phone, censored_text)
         session["escalated"] = True
     else:
         await whatsapp.send_message(phone,
@@ -108,7 +124,7 @@ async def handle(phone: str, text: str):
                         name=session["name"],
                         cpf=session["cpf"],
                         phone=phone,
-                        source="whatsapp",
+                        source=session.get("source", "whatsapp"),
                         service=session["service"],
                         profile_pic=f"https://api.dicebear.com/7.x/adventurer/svg?seed={session['name']}",
                         appointment_date=session["appointment_date"],
@@ -134,6 +150,6 @@ async def handle(phone: str, text: str):
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
 
-    session = await sess.add_to_history(session, "user", text)
+    session = await sess.add_to_history(session, "user", censored_text)
     session = await sess.add_to_history(session, "assistant", response)
     await sess.save_session(phone, session)

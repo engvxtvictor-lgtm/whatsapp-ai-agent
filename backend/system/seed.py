@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from sqlalchemy import select
 from backend.system.database import AsyncSession, engine, Base
-from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb
 
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
@@ -115,6 +115,33 @@ async def seed_db():
             )
         ]
         session.add_all(services)
+
+        # Criando regras de follow-up padrão
+        print("Criando regras de follow-up padrao...")
+        followups = [
+            FollowupWeb(
+                name="Lembrete Semestral",
+                service="Limpeza",
+                delay_days=180,
+                message_template="Olá [NOME]! Identificamos que já faz 6 meses desde o seu último procedimento de [SERVIÇO]. Que tal agendarmos um retorno preventivo esta semana?",
+                is_active=True
+            ),
+            FollowupWeb(
+                name="Acompanhamento Pós-Cirúrgico",
+                service="Implante",
+                delay_days=1,
+                message_template="Olá [NOME], como está a recuperação do seu procedimento de [SERVIÇO]? Qualquer desconforto ou dúvida, estamos aqui!",
+                is_active=True
+            ),
+            FollowupWeb(
+                name="Feedback de Sensibilidade",
+                service="Clareamento",
+                delay_days=3,
+                message_template="Olá [NOME], sentiu alguma sensibilidade após a sessão de [SERVIÇO]? Lembre-se de evitar alimentos corantes hoje!",
+                is_active=True
+            )
+        ]
+        session.add_all(followups)
         await session.commit()
             
     print("Semeadura concluida!")

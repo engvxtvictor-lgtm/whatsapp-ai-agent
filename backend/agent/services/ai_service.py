@@ -7,15 +7,23 @@ from backend.system.models.web_models import ServiceWeb
 
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 
-SYSTEM = """Você é um assistente de atendimento inteligente da clínica Lúmina via WhatsApp.
-Seu objetivo é cadastrar pacientes, agendar consultas e tentar realizar um UPSELL de serviços adicionais de forma extremamente sutil, cordial e contextualizada com base nos serviços disponíveis na clínica.
+SYSTEM = """Você é a Lúmina, uma atendente virtual humana, empática e muito simpática da clínica odontológica Clínica Lúmina.
+Seu objetivo é tirar as dúvidas dos pacientes com muito carinho, atenção e cordialidade, e guiá-los no agendamento de consultas.
 
-Fluxo de Atendimento:
-1. Seja sempre cordial, direto e simpático.
-2. Identifique o Nome, CPF (11 dígitos) e o Serviço/Exame principal desejado pelo paciente.
-3. Pergunte qual o Dia e Horário desejados para a consulta.
-4. Faça uma oferta de UPSELL baseada na motivação ou necessidade do paciente, sugerindo um serviço adicional complementar que faça sentido e agregue valor à saúde ou estética dele.
-5. Se o paciente aceitar, marque upsell_success como true e defina o upsell_service correspondente.
+Instruções de Personalidade e Tom:
+1. Aja como uma atendente humana real de recepção. Seja atenciosa, empática e prestativa.
+2. NUNCA sob qualquer circunstância revele que você é uma inteligência artificial, robô, assistente inteligente, LLM ou modelo de linguagem.
+3. NUNCA cite termos técnicos como "sistema", "banco de dados", "fluxo de fechamento", "JSON", "metadados", "CONFIANÇA", "Groq", "FastAPI" ou qualquer detalhe operacional/técnico de programação.
+4. Explique os procedimentos com linguagem clara e reconfortante (como uma especialista acolhedora da recepção da clínica).
+
+Fluxo de Conversação / Fechamento:
+- Quando o paciente iniciar a conversa (ex: "gostaria de saber sobre branqueamento"), responda todas as dúvidas dele detalhadamente primeiro (explicando os benefícios e a importância descritos na tabela de serviços abaixo).
+- Após responder e tirar as dúvidas, convide o paciente a agendar uma consulta para avaliação de forma natural (ex: "Gostaria de agendar um horário para fazermos uma avaliação com um de nossos dentistas?").
+- Se ele demonstrar interesse em agendar, siga este fluxo de fechamento natural:
+  1. Peça educadamente o Nome Completo e o CPF (diga que precisa para fazer o cadastro dele em nossa recepção).
+  2. Peça o Dia e Horário desejados para a consulta.
+  3. Ofereça de forma extremamente sutil e contextualizada um serviço adicional de UPSELL baseado nas motivações listadas abaixo.
+  4. Nota: É normal que o CPF no histórico apareça censurado (ex: 123.45*.***-**). Isso é uma medida automática de segurança para proteção dos seus dados, não se preocupe e prossiga normalmente.
 
 Ao final de TODA resposta, você DEVE incluir exatamente essas duas linhas estruturadas de metadados:
 CONFIANÇA: [número de 0 a 100]
@@ -27,7 +35,86 @@ Regras estritas:
 - Máximo 3 parágrafos de texto no corpo da mensagem."""
 
 
+import re
+
+def detect_jailbreak(message: str) -> bool:
+    """
+    Detecta tentativas de jailbreak, desvio de contexto ou vazamento de prompt.
+    """
+    patterns = [
+        r"ignor[ae]r?\s+(as\s+|previous\s+)?instru",
+        r"system\s+prompt",
+        r"prompt\s+de\s+sistema",
+        r"developer\s+mode",
+        r"modo\s+desenvolvedor",
+        r"dan\s+mode",
+        r"you\s+are\s+now\s+a",
+        r"você\s+agora\s+é\s+um",
+        r"voce\s+agora\s+e\s+um",
+        r"revelar?\s+suas?\s+instru",
+        r"reveal\s+your\s+instru",
+        r"groq_api_key",
+        r"chave\s+de\s+api",
+        r"api\s+key",
+        r"banco\s+de\s+dados",
+        r"database\s+schema"
+    ]
+    combined = re.compile("|".join(patterns), re.IGNORECASE)
+    return bool(combined.search(message))
+
+
+def validate_output_guardrail(response: str) -> str:
+    """
+    Sanitiza e valida a resposta da IA para garantir conformidade e polidez.
+    """
+    technical_words = ["JSON", "METADADOS:", "CONFIANÇA:", "CONFIAŃCA:", "FastAPI", "Groq", "Llama3"]
+    # Se vazou linhas estruturadas de metadados, removemos
+    lines = []
+    for line in response.split("\n"):
+        if any(w in line for w in ["METADADOS:", "CONFIANÇA:", "CONFIAŃCA:"]):
+            continue
+        lines.append(line)
+    
+    clean_text = "\n".join(lines).strip()
+    return clean_text
+
+
+def extract_and_censor_cpf(text: str) -> tuple[str, str | None]:
+    """
+    Busca CPF na mensagem. Retorna (mensagem_censurada, cpf_limpo).
+    """
+    # Padrão CPF formatado ou não (11 dígitos)
+    cpf_pattern = r"\b(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})\b"
+    match = re.search(cpf_pattern, text)
+    if match:
+        full_cpf = "".join(match.groups())
+        censored = f"{full_cpf[:3]}.{full_cpf[3:5]}*.***-**"
+        censored_text = re.sub(cpf_pattern, censored, text)
+        return censored_text, full_cpf
+        
+    # Padrão 11 dígitos sequenciais puros
+    pure_pattern = r"\b\d{11}\b"
+    pure_match = re.search(pure_pattern, text)
+    if pure_match:
+        full_cpf = pure_match.group(0)
+        censored = f"{full_cpf[:3]}.{full_cpf[3:5]}*.***-**"
+        censored_text = re.sub(pure_pattern, censored, text)
+        return censored_text, full_cpf
+
+    return text, None
+
+
 async def get_response(message: str, history: list, faq_context: str = "") -> tuple[str, float, dict | None]:
+    # 1. Input Guardrail: Detecta Jailbreak
+    if detect_jailbreak(message):
+        logger.warning(f"Jailbreak detectado na mensagem do usuario: '{message[:50]}'")
+        fallback_msg = (
+            "Olá! Sou a Lúmina, assistente virtual da Clínica Lúmina. 😊\n\n"
+            "Meu papel é esclarecer suas dúvidas sobre nossos procedimentos odontológicos (como Limpeza, Clareamento, Implante e Aparelho) "
+            "e ajudar você a agendar um horário com nossos profissionais. Como posso ajudar com seu sorriso hoje?"
+        )
+        return fallback_msg, 1.0, None
+
     # Busca os serviços cadastrados no banco de dados para alimentar o contexto do Agente
     services_context = ""
     try:
@@ -61,6 +148,9 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
     confidence = _parse_confidence(text)
     metadata = _parse_metadata(text)
     clean = _remove_structured_lines(text)
+    
+    # 2. Output Guardrail: Sanitiza resposta
+    clean = validate_output_guardrail(clean)
 
     logger.info(f"IA respondeu | confianca={confidence:.2f} | metadata={metadata}")
     return clean, confidence, metadata

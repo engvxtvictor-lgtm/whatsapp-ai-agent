@@ -38,6 +38,17 @@ CREATE TABLE IF NOT EXISTS web_services (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabela de Automação de Follow-Up
+CREATE TABLE IF NOT EXISTS web_followups (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    service VARCHAR(50) NOT NULL,
+    delay_days INTEGER NOT NULL,
+    message_template VARCHAR(500) NOT NULL,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Inserção de dados iniciais para testes
 INSERT INTO web_admins (name, email, role, avatar)
 VALUES 
@@ -61,3 +72,11 @@ VALUES
 ('Implante Dentario', 2500.00, 'Indicado para reabilitar dentes ausentes, permitindo recuperar a mastigacao perfeita e a estetica do sorriso com uma protese fixa ultra-resistente.'),
 ('Protese Provisoria', 400.00, 'Indicada para proteger o dente preparado e garantir a estetica e mastigacao temporaria enquanto a protese definitiva esta sendo fabricada no laboratorio.')
 ON CONFLICT DO NOTHING;
+
+INSERT INTO web_followups (name, service, delay_days, message_template, is_active)
+VALUES
+('Lembrete Semestral', 'Limpeza', 180, 'Olá [NOME]! Identificamos que já faz 6 meses desde o seu último procedimento de [SERVIÇO]. Que tal agendarmos um retorno preventivo esta semana?', TRUE),
+('Acompanhamento Pós-Cirúrgico', 'Implante', 1, 'Olá [NOME], como está a recuperação do seu procedimento de [SERVIÇO]? Qualquer desconforto ou dúvida, estamos aqui!', TRUE),
+('Feedback de Sensibilidade', 'Clareamento', 3, 'Olá [NOME], sentiu alguma sensibilidade após a sessão de [SERVIÇO]? Lembre-se de evitar alimentos corantes hoje!', TRUE)
+ON CONFLICT DO NOTHING;
+

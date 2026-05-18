@@ -1286,3 +1286,30 @@ input:checked + .slider:before {
     box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
 }
 
+/* Lixeira para excluir regras de follow-up */
+.rule-controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-delete-rule {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.4);
+    cursor: pointer;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    padding: 6px;
+    border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-delete-rule:hover {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.15);
+}
+
+

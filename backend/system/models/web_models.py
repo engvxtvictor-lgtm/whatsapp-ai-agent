@@ -45,3 +45,16 @@ class ServiceWeb(Base):
     necessity: Mapped[str] = mapped_column(String(255), nullable=False)  # Necessidade/Motivação para ofertar (ex: indicação estética)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
+class FollowupWeb(Base):
+    __tablename__ = "web_followups"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)       # Nome da regra (ex: Lembrete Semestral)
+    service: Mapped[str] = mapped_column(String(50), nullable=False)     # Procedimento odontológico gatilho (ex: Limpeza)
+    delay_days: Mapped[int] = mapped_column(nullable=False)              # Dias decorridos após a consulta (ex: 180)
+    message_template: Mapped[str] = mapped_column(String(500), nullable=False) # Template da mensagem com placeholders
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False) # Status de atividade
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+

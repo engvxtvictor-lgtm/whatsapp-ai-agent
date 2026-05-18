@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 import asyncio
 from backend.system.database import get_db
-from backend.system.models.web_models import ClientWeb, AdminWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
 from backend.system.logger import logger
@@ -232,3 +232,64 @@ async def dispatch_campaign_messages(clients: List[ClientWeb], template: str):
             success_count += 1
 
     logger.info(f"Campanha encerrada. Sucesso: {success_count}/{len(clients)}")
+
+
+class FollowupSchema(BaseModel):
+    id: Optional[int] = None
+    name: str
+    service: str
+    delay_days: int
+    message_template: str
+    is_active: bool = True
+
+    class Config:
+        from_attributes = True
+
+
+# Endpoints de Follow-Up
+@router.get("/followups", response_model=List[FollowupSchema])
+async def get_followups(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(FollowupWeb).order_by(FollowupWeb.id.asc()))
+    followups = result.scalars().all()
+    return followups
+
+
+@router.post("/followups", response_model=FollowupSchema)
+async def create_followup(data: FollowupSchema, db: AsyncSession = Depends(get_db)):
+    new_followup = FollowupWeb(
+        name=data.name,
+        service=data.service,
+        delay_days=data.delay_days,
+        message_template=data.message_template,
+        is_active=data.is_active
+    )
+    db.add(new_followup)
+    await db.commit()
+    await db.refresh(new_followup)
+    return new_followup
+
+
+@router.put("/followups/{followup_id}/toggle")
+async def toggle_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(FollowupWeb).where(FollowupWeb.id == followup_id))
+    followup = result.scalars().first()
+    if not followup:
+        raise HTTPException(status_code=404, detail="Regra de follow-up nao encontrada.")
+    
+    followup.is_active = not followup.is_active
+    await db.commit()
+    await db.refresh(followup)
+    return {"status": "ok", "id": followup_id, "is_active": followup.is_active}
+
+
+@router.delete("/followups/{followup_id}")
+async def delete_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(FollowupWeb).where(FollowupWeb.id == followup_id))
+    followup = result.scalars().first()
+    if not followup:
+        raise HTTPException(status_code=404, detail="Regra de follow-up nao encontrada.")
+    
+    await db.delete(followup)
+    await db.commit()
+    return {"status": "deleted", "id": followup_id}
+

@@ -17,7 +17,8 @@ async def get_session(phone: str) -> dict:
             "service": None,
             "appointment_date": None,
             "upsell_success": False,
-            "upsell_service": None
+            "upsell_service": None,
+            "source": "whatsapp"
         }
         for key, value in defaults.items():
             if key not in session:
@@ -34,7 +35,8 @@ async def get_session(phone: str) -> dict:
         "service": None,
         "appointment_date": None,
         "upsell_success": False,
-        "upsell_service": None
+        "upsell_service": None,
+        "source": "whatsapp"
     }
 
 
