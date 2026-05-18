@@ -1,6 +1,6 @@
 import httpx
-from app.core.config import settings
-from app.utils.logger import logger
+from backend.system.config import settings
+from backend.system.logger import logger
 
 BAILEYS_URL = "http://localhost:3000/send"
 

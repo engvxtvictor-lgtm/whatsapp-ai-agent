@@ -1,7 +1,7 @@
 from datetime import datetime
 from sqlalchemy import String, DateTime
 from sqlalchemy.orm import Mapped, mapped_column
-from app.core.database import Base
+from backend.system.database import Base
 
 
 class ClientWeb(Base):

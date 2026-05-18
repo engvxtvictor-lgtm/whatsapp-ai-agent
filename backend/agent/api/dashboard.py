@@ -3,10 +3,10 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from app.core.database import get_db
-from app.models.web_models import ClientWeb, AdminWeb
-from app.services import whatsapp
-from app.utils.logger import logger
+from backend.system.database import get_db
+from backend.system.models.web_models import ClientWeb, AdminWeb
+from backend.agent.services import whatsapp
+from backend.system.logger import logger
 
 router = APIRouter(prefix="/api")
 

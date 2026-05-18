@@ -1,6 +1,6 @@
 from groq import AsyncGroq
-from app.core.config import settings
-from app.utils.logger import logger
+from backend.system.config import settings
+from backend.system.logger import logger
 
 client = AsyncGroq(api_key=settings.GROQ_API_KEY)
 

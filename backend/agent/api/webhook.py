@@ -1,8 +1,8 @@
 from fastapi import APIRouter, Request, BackgroundTasks
-from app.services import session as sess
-from app.services import ai_service, faq_service, whatsapp
-from app.core.config import settings
-from app.utils.logger import logger
+from backend.agent.services import session as sess
+from backend.agent.services import ai_service, faq_service, whatsapp
+from backend.system.config import settings
+from backend.system.logger import logger
 
 router = APIRouter(prefix="/webhook")
 
