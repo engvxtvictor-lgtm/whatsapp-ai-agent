@@ -20,6 +20,11 @@ class ClientSchema(BaseModel):
     source: str = "whatsapp"
     service: str
     profile_pic: Optional[str] = None
+    
+    # Novos campos de agendamento e upsell
+    appointment_date: Optional[str] = None
+    upsell_success: bool = False
+    upsell_service: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -57,7 +62,10 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         phone=client_data.phone,
         source=client_data.source,
         service=client_data.service,
-        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}"
+        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}",
+        appointment_date=client_data.appointment_date,
+        upsell_success=client_data.upsell_success,
+        upsell_service=client_data.upsell_service
     )
     db.add(new_client)
     await db.commit()

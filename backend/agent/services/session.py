@@ -9,8 +9,33 @@ PREFIX = "session:"
 async def get_session(phone: str) -> dict:
     data = await redis_client.get(f"{PREFIX}{phone}")
     if data:
-        return json.loads(data)
-    return {"phone": phone, "history": [], "ai_attempts": 0, "escalated": False}
+        # Garante retrocompatibilidade se a sessão antiga não tiver os novos campos
+        session = json.loads(data)
+        defaults = {
+            "name": None,
+            "cpf": None,
+            "service": None,
+            "appointment_date": None,
+            "upsell_success": False,
+            "upsell_service": None
+        }
+        for key, value in defaults.items():
+            if key not in session:
+                session[key] = value
+        return session
+        
+    return {
+        "phone": phone,
+        "history": [],
+        "ai_attempts": 0,
+        "escalated": False,
+        "name": None,
+        "cpf": None,
+        "service": None,
+        "appointment_date": None,
+        "upsell_success": False,
+        "upsell_service": None
+    }
 
 
 async def save_session(phone: str, session: dict):

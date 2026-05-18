@@ -12,76 +12,76 @@ from backend.system.models.web_models import ClientWeb, AdminWeb
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
     
-    # Garante que as tabelas existem
+    # Recria as tabelas (deleta se existirem para aplicar a nova estrutura)
     async with engine.begin() as conn:
+        print("Recriando tabelas...")
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     
     async with AsyncSession() as session:
-        # Verifica se já existem administradores
-        admin_check = await session.execute(select(AdminWeb))
-        if not admin_check.scalars().first():
-            print("Criando administradores padrao...")
-            admins = [
-                AdminWeb(
-                    name="Dra. Ana Souza",
-                    email="ana.souza@odontoclinic.com",
-                    role="Dentista Principal",
-                    avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Ana"
-                ),
-                AdminWeb(
-                    name="Carlos Eduardo",
-                    email="carlos.eduardo@odontoclinic.com",
-                    role="Administrador",
-                    avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos"
-                ),
-                AdminWeb(
-                    name="Mariana Lima",
-                    email="mariana.lima@odontoclinic.com",
-                    role="Atendente",
-                    avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana"
-                )
-            ]
-            session.add_all(admins)
-            await session.commit()
-            print("Administradores criados com sucesso!")
-        else:
-            print("Administradores ja existem no banco de dados.")
+        # Criando administradores padrão
+        print("Criando administradores padrao...")
+        admins = [
+            AdminWeb(
+                name="Dra. Ana Souza",
+                email="ana.souza@odontoclinic.com",
+                role="Dentista Principal",
+                avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Ana"
+            ),
+            AdminWeb(
+                name="Carlos Eduardo",
+                email="carlos.eduardo@odontoclinic.com",
+                role="Administrador",
+                avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos"
+            ),
+            AdminWeb(
+                name="Mariana Lima",
+                email="mariana.lima@odontoclinic.com",
+                role="Atendente",
+                avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana"
+            )
+        ]
+        session.add_all(admins)
 
-        # Verifica se já existem clientes
-        client_check = await session.execute(select(ClientWeb))
-        if not client_check.scalars().first():
-            print("Criando clientes padrao...")
-            clients = [
-                ClientWeb(
-                    name="Rodrigo Silva",
-                    cpf="123.456.789-00",
-                    phone="5511988888888",
-                    source="whatsapp",
-                    service="Clareamento Dental",
-                    profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo"
-                ),
-                ClientWeb(
-                    name="Beatriz Santos",
-                    cpf="987.654.321-11",
-                    phone="5511977777777",
-                    source="instagram",
-                    service="Limpeza e Profilaxia",
-                    profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz"
-                ),
-                ClientWeb(
-                    name="Felipe Oliveira",
-                    cpf="456.789.123-22",
-                    phone="5511966666666",
-                    source="whatsapp",
-                    service="Implante Dentario",
-                    profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe"
-                )
-            ]
-            session.add_all(clients)
-            await session.commit()
-            print("Clientes criados com sucesso!")
-        else:
-            print("Clientes ja existem no banco de dados.")
+        # Criando clientes padrão com novos campos
+        print("Criando clientes padrao...")
+        clients = [
+            ClientWeb(
+                name="Rodrigo Silva",
+                cpf="123.456.789-00",
+                phone="5511988888888",
+                source="whatsapp",
+                service="Clareamento Dental",
+                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo",
+                appointment_date="25/05/2026 as 14:00",
+                upsell_success=True,
+                upsell_service="Limpeza Completa"
+            ),
+            ClientWeb(
+                name="Beatriz Santos",
+                cpf="987.654.321-11",
+                phone="5511977777777",
+                source="instagram",
+                service="Limpeza e Profilaxia",
+                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz",
+                appointment_date="28/05/2026 as 10:30",
+                upsell_success=False,
+                upsell_service=None
+            ),
+            ClientWeb(
+                name="Felipe Oliveira",
+                cpf="456.789.123-22",
+                phone="5511966666666",
+                source="whatsapp",
+                service="Implante Dentario",
+                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe",
+                appointment_date="01/06/2026 as 16:00",
+                upsell_success=True,
+                upsell_service="Protese Provisoria"
+            )
+        ]
+        session.add_all(clients)
+        await session.commit()
             
     print("Semeadura concluida!")
 
