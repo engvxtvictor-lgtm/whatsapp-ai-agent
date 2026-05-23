@@ -147,7 +147,7 @@ async def handle(phone: str, text: str):
 
         # Envia o PDF de serviços na primeira mensagem do paciente
         is_first_message = len(session.get("history", [])) == 0
-        pdf_path = os.path.join("docs", settings.SERVICES_PDF_FILENAME)
+        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
         if is_first_message and os.path.exists(pdf_path):
             pdf_url = f"{settings.BACKEND_PUBLIC_URL}/docs/{settings.SERVICES_PDF_FILENAME}"
             logger.info(f"Enviando PDF de serviços para {phone[:6]}***")

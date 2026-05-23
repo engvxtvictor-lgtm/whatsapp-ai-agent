@@ -44,8 +44,8 @@ app.mount("/frontend", StaticFiles(directory="frontend"), name="frontend")
 
 # Servir documentos (PDFs) como arquivos estáticos
 import os
-os.makedirs("docs", exist_ok=True)
-app.mount("/docs", StaticFiles(directory="docs"), name="docs")
+os.makedirs("backend/agent/docs", exist_ok=True)
+app.mount("/docs", StaticFiles(directory="backend/agent/docs"), name="docs")
 
 
 @app.get("/health")
