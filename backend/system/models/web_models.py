@@ -71,7 +71,19 @@ class ExamWeb(Base):
     category: Mapped[str] = mapped_column(String(50), nullable=False)    # Categoria do exame/procedimento
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+
     clients: Mapped[list["ClientWeb"]] = relationship("ClientWeb", back_populates="exam")
+
+
+class FollowupLogWeb(Base):
+    """Registra quais follow-ups já foram enviados para evitar duplicatas."""
+    __tablename__ = "web_followup_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_clients.id"), nullable=False)
+    followup_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_followups.id"), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 
 

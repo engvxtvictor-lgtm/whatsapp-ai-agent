@@ -9,6 +9,7 @@ from backend.system.database import get_db
 from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb, ExamWeb
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
+from backend.agent.services.followup_scheduler import run_followup_check
 from backend.system.logger import logger
 
 router = APIRouter(prefix="/api")
@@ -348,6 +349,13 @@ async def delete_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(followup)
     await db.commit()
     return {"status": "deleted", "id": followup_id}
+
+
+@router.post("/followups/run")
+async def run_followups_now(bg: BackgroundTasks):
+    """Dispara a verificação de follow-ups manualmente (útil para testes)."""
+    bg.add_task(run_followup_check)
+    return {"status": "ok", "message": "Verificação de follow-ups iniciada em background."}
 
 
 class ExamSchema(BaseModel):

@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from backend.agent.api.webhook import router as webhook_router
 from backend.agent.api.dashboard import router as dashboard_router
 from backend.agent.api.test_chat import router as test_router
+from backend.agent.services.followup_scheduler import create_scheduler
 import backend.system.models  # Garante que os modelos sejam carregados para criação das tabelas
 from backend.system.database import create_tables
 from backend.system.config import settings
@@ -16,7 +17,11 @@ async def lifespan(app: FastAPI):
     logger.info(f"Iniciando {settings.APP_NAME if hasattr(settings, 'APP_NAME') else 'WhatsApp AI Agent'}...")
     await create_tables()
     logger.info("Banco de dados pronto.")
+    scheduler = create_scheduler()
+    scheduler.start()
+    logger.info("Scheduler de follow-up iniciado.")
     yield
+    scheduler.shutdown(wait=False)
     logger.info("Encerrando aplicação.")
 
 
