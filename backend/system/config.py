@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     MAX_AI_ATTEMPTS: int = 3
     WHATSAPP_API_URL: str = "http://localhost:3000"
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
-    SERVICES_PDF_FILENAME: str = "tabela_servicos.pdf"
+    SERVICES_PDF_FILENAME: str = "lumina_nossos_servicos.pdf"
 
     class Config:
         env_file = ".env"
