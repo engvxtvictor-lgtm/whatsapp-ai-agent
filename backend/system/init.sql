@@ -1,5 +1,14 @@
 -- Criação das tabelas para o banco de dados PostgreSQL do Sistema
 
+-- Tabela de Exames e Procedimentos
+CREATE TABLE IF NOT EXISTS web_exams (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    price NUMERIC(10, 2) NOT NULL,
+    category VARCHAR(50) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Tabela de Clientes
 CREATE TABLE IF NOT EXISTS web_clients (
     id SERIAL PRIMARY KEY,
@@ -15,6 +24,8 @@ CREATE TABLE IF NOT EXISTS web_clients (
     upsell_success BOOLEAN DEFAULT FALSE NOT NULL,
     upsell_service VARCHAR(100),
     status VARCHAR(20) DEFAULT 'pending' NOT NULL,
+    exam_id INTEGER REFERENCES web_exams(id),
+    needs_human BOOLEAN DEFAULT FALSE NOT NULL,
     
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -57,11 +68,36 @@ VALUES
 ('Mariana Lima', 'mariana.lima@odontoclinic.com', 'Atendente', 'https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service, status)
+-- Inserção de Exames/Procedimentos
+INSERT INTO web_exams (name, price, category)
+VALUES
+('Raspagem (Limpeza)', 120.00, 'Prevenção'),
+('Consulta + Aplicação de Flúor Infantil', 50.00, 'Odontopediatria'),
+('Radiografia Periapical', 35.00, 'Diagnóstico'),
+('Restauração', 80.00, 'Clínico Geral'),
+('Restauração Infantil', 70.00, 'Odontopediatria'),
+('Extração Infantil', 90.00, 'Odontopediatria'),
+('Extração Simples', 120.00, 'Cirurgia'),
+('Tratamento de Canal', 600.00, 'Endodontia'),
+('Facetas (por dente)', 250.00, 'Estética'),
+('Prótese Dentária', 950.00, 'Prótese'),
+('Pino + Coroa', 500.00, 'Prótese'),
+('Manutenção Aparelho', 90.00, 'Ortodontia'),
+('Clareamento (por sessão)', 250.00, 'Estética'),
+('Placa para Bruxismo', 450.00, 'Clínico Geral'),
+('Contenção Ortodôntica Inferior', 200.00, 'Ortodontia'),
+('Contenção Ortodôntica Superior', 250.00, 'Ortodontia'),
+('Implante', 2800.00, 'Implantodontia'),
+('Gengivoplastia (por dente)', 200.00, 'Periodontia'),
+('Remoção de Facetas', 300.00, 'Estética'),
+('Extração Complexa (Siso)', 300.00, 'Cirurgia')
+ON CONFLICT DO NOTHING;
+
+INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service, status, exam_id)
 VALUES 
-('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento Dental', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Limpeza Completa', 'confirmed'),
-('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Limpeza e Profilaxia', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL, 'pending'),
-('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante Dentario', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Protese Provisoria', 'confirmed')
+('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento (por sessão)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Raspagem (Limpeza)', 'confirmed', 13),
+('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Raspagem (Limpeza)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL, 'pending', 1),
+('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Pino + Coroa', 'confirmed', 17)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO web_services (name, price, necessity)

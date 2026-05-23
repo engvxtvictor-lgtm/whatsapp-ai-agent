@@ -5,9 +5,8 @@ import asyncio
 # Adiciona o diretório raiz ao PYTHONPATH antes de importar os módulos locais
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
-from sqlalchemy import select
 from backend.system.database import AsyncSession, engine, Base
-from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb, ExamWeb
 
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
@@ -43,6 +42,33 @@ async def seed_db():
         ]
         session.add_all(admins)
 
+        # Criando exames/procedimentos padrão
+        print("Criando exames padrao...")
+        exams = [
+            ExamWeb(name="Raspagem (Limpeza)", price=120.00, category="Prevenção"),
+            ExamWeb(name="Consulta + Aplicação de Flúor Infantil", price=50.00, category="Odontopediatria"),
+            ExamWeb(name="Radiografia Periapical", price=35.00, category="Diagnóstico"),
+            ExamWeb(name="Restauração", price=80.00, category="Clínico Geral"),
+            ExamWeb(name="Restauração Infantil", price=70.00, category="Odontopediatria"),
+            ExamWeb(name="Extração Infantil", price=90.00, category="Odontopediatria"),
+            ExamWeb(name="Extração Simples", price=120.00, category="Cirurgia"),
+            ExamWeb(name="Tratamento de Canal", price=600.00, category="Endodontia"),
+            ExamWeb(name="Facetas (por dente)", price=250.00, category="Estética"),
+            ExamWeb(name="Prótese Dentária", price=950.00, category="Prótese"),
+            ExamWeb(name="Pino + Coroa", price=500.00, category="Prótese"),
+            ExamWeb(name="Manutenção Aparelho", price=90.00, category="Ortodontia"),
+            ExamWeb(name="Clareamento (por sessão)", price=250.00, category="Estética"),
+            ExamWeb(name="Placa para Bruxismo", price=450.00, category="Clínico Geral"),
+            ExamWeb(name="Contenção Ortodôntica Inferior", price=200.00, category="Ortodontia"),
+            ExamWeb(name="Contenção Ortodôntica Superior", price=250.00, category="Ortodontia"),
+            ExamWeb(name="Implante", price=2800.00, category="Implantodontia"),
+            ExamWeb(name="Gengivoplastia (por dente)", price=200.00, category="Periodontia"),
+            ExamWeb(name="Remoção de Facetas", price=300.00, category="Estética"),
+            ExamWeb(name="Extração Complexa (Siso)", price=300.00, category="Cirurgia")
+        ]
+        session.add_all(exams)
+        await session.flush() # Gera os IDs para os exames antes de linkar os clientes
+
         # Criando clientes padrão com novos campos
         print("Criando clientes padrao...")
         clients = [
@@ -51,36 +77,39 @@ async def seed_db():
                 cpf="123.456.789-00",
                 phone="5511988888888",
                 source="whatsapp",
-                service="Clareamento Dental",
+                service="Clareamento (por sessão)",
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo",
                 appointment_date="25/05/2026 as 14:00",
                 upsell_success=True,
-                upsell_service="Limpeza Completa",
-                status="confirmed"
+                upsell_service="Raspagem (Limpeza)",
+                status="confirmed",
+                exam_id=exams[12].id
             ),
             ClientWeb(
                 name="Beatriz Santos",
                 cpf="987.654.321-11",
                 phone="5511977777777",
                 source="instagram",
-                service="Limpeza e Profilaxia",
+                service="Raspagem (Limpeza)",
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz",
                 appointment_date="28/05/2026 as 10:30",
                 upsell_success=False,
                 upsell_service=None,
-                status="pending"
+                status="pending",
+                exam_id=exams[0].id
             ),
             ClientWeb(
                 name="Felipe Oliveira",
                 cpf="456.789.123-22",
                 phone="5511966666666",
                 source="whatsapp",
-                service="Implante Dentario",
+                service="Implante",
                 profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe",
                 appointment_date="01/06/2026 as 16:00",
                 upsell_success=True,
-                upsell_service="Protese Provisoria",
-                status="confirmed"
+                upsell_service="Pino + Coroa",
+                status="confirmed",
+                exam_id=exams[16].id
             )
         ]
         session.add_all(clients)

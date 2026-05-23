@@ -2,10 +2,11 @@ from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
 from backend.system.database import get_db
-from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb, ExamWeb
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
 from backend.system.logger import logger
@@ -29,9 +30,14 @@ class ClientSchema(BaseModel):
     upsell_service: Optional[str] = None
     status: str = "pending"
     ai_active: bool = True
+    exam_id: Optional[int] = None
+    exam_category: Optional[str] = None
+    exam_price: Optional[float] = None
+    needs_human: bool = False
 
     class Config:
         from_attributes = True
+
 
 
 class ConfirmRequestSchema(BaseModel):
@@ -57,7 +63,9 @@ class CampaignSchema(BaseModel):
 # Endpoints de Clientes
 @router.get("/clients", response_model=List[ClientSchema])
 async def get_clients(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ClientWeb).order_by(ClientWeb.id.desc()))
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.exam)).order_by(ClientWeb.id.desc())
+    )
     clients = result.scalars().all()
     
     async def enrich_client(client):
@@ -80,7 +88,11 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
             upsell_success=client.upsell_success,
             upsell_service=client.upsell_service,
             status=client.status,
-            ai_active=ai_active
+            ai_active=ai_active,
+            exam_id=client.exam_id,
+            exam_category=client.exam.category if client.exam else None,
+            exam_price=client.exam.price if client.exam else None,
+            needs_human=client.needs_human
         )
         
     enriched_clients = await asyncio.gather(*(enrich_client(c) for c in clients))
@@ -89,24 +101,55 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
 
 @router.post("/clients", response_model=ClientSchema)
 async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(get_db)):
+    service_name = client_data.service
+    if client_data.exam_id:
+        exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == client_data.exam_id))
+        exam = exam_res.scalars().first()
+        if exam:
+            service_name = exam.name
+
     new_client = ClientWeb(
         name=client_data.name,
         cpf=client_data.cpf,
         phone=client_data.phone,
         source=client_data.source,
-        service=client_data.service,
+        service=service_name,
         profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}",
         appointment_date=client_data.appointment_date,
         upsell_success=client_data.upsell_success,
         upsell_service=client_data.upsell_service,
-        status=client_data.status or "pending"
+        status=client_data.status or "pending",
+        exam_id=client_data.exam_id,
+        needs_human=client_data.needs_human
     )
     db.add(new_client)
     await db.commit()
     await db.refresh(new_client)
     
-    client_schema = ClientSchema.from_orm(new_client)
-    client_schema.ai_active = True
+    # Recarrega com relacionamento
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.exam)).where(ClientWeb.id == new_client.id)
+    )
+    new_client = result.scalars().first()
+    
+    client_schema = ClientSchema(
+        id=new_client.id,
+        name=new_client.name,
+        cpf=new_client.cpf,
+        phone=new_client.phone,
+        source=new_client.source,
+        service=new_client.service,
+        profile_pic=new_client.profile_pic,
+        appointment_date=new_client.appointment_date,
+        upsell_success=new_client.upsell_success,
+        upsell_service=new_client.upsell_service,
+        status=new_client.status,
+        ai_active=True,
+        exam_id=new_client.exam_id,
+        exam_category=new_client.exam.category if new_client.exam else None,
+        exam_price=new_client.exam.price if new_client.exam else None,
+        needs_human=new_client.needs_human
+    )
     return client_schema
 
 
@@ -174,6 +217,19 @@ async def toggle_ai(phone: str):
     except Exception as e:
         logger.error(f"Erro ao alternar IA para {phone}: {e}")
         raise HTTPException(status_code=500, detail="Erro interno ao alternar estado da IA.")
+
+
+@router.put("/clients/{client_id}/resolve-human")
+async def resolve_human(client_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClientWeb).where(ClientWeb.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
+    
+    client.needs_human = False
+    await db.commit()
+    await db.refresh(client)
+    return {"status": "ok", "client_id": client_id, "needs_human": False}
 
 
 # Endpoints de Administradores
@@ -292,4 +348,63 @@ async def delete_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(followup)
     await db.commit()
     return {"status": "deleted", "id": followup_id}
+
+
+class ExamSchema(BaseModel):
+    id: Optional[int] = None
+    name: str
+    price: float
+    category: str
+
+    class Config:
+        from_attributes = True
+
+
+# Endpoints de Exames/Procedimentos
+@router.get("/exams", response_model=List[ExamSchema])
+async def get_exams(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ExamWeb).order_by(ExamWeb.name.asc()))
+    exams = result.scalars().all()
+    return exams
+
+
+@router.post("/exams", response_model=ExamSchema)
+async def create_exam(data: ExamSchema, db: AsyncSession = Depends(get_db)):
+    new_exam = ExamWeb(
+        name=data.name,
+        price=data.price,
+        category=data.category
+    )
+    db.add(new_exam)
+    await db.commit()
+    await db.refresh(new_exam)
+    return new_exam
+
+
+@router.put("/exams/{exam_id}", response_model=ExamSchema)
+async def update_exam(exam_id: int, data: ExamSchema, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ExamWeb).where(ExamWeb.id == exam_id))
+    exam = result.scalars().first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exame não encontrado.")
+    
+    exam.name = data.name
+    exam.price = data.price
+    exam.category = data.category
+    await db.commit()
+    await db.refresh(exam)
+    return exam
+
+
+@router.delete("/exams/{exam_id}")
+async def delete_exam(exam_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ExamWeb).where(ExamWeb.id == exam_id))
+    exam = result.scalars().first()
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exame não encontrado.")
+    
+    await db.delete(exam)
+    await db.commit()
+    return {"status": "deleted", "id": exam_id}
+
 

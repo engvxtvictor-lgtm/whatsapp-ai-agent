@@ -61,6 +61,10 @@
                     <i class="fa-solid fa-user-shield"></i>
                     <span>Administradores</span>
                 </a>
+                <a href="#" class="nav-item" data-tab="exams">
+                    <i class="fa-solid fa-notes-medical"></i>
+                    <span>Tabela de Exames</span>
+                </a>
                 <a href="#" class="nav-item" data-tab="campaigns">
                     <i class="fa-solid fa-paper-plane"></i>
                     <span>Campanhas & Follow-Up</span>
@@ -198,6 +202,44 @@
 
                     <div class="admins-grid" id="admins-grid">
                         <!-- Gerado Dinamicamente por app.js -->
+                    </div>
+                </section>
+
+                <!-- ABA 2.5: EXAMES -->
+                <section id="tab-exams" class="tab-panel">
+                    <div class="tab-section-header">
+                        <div>
+                            <h3>Tabela de Exames & Valores</h3>
+                            <p>Tabela de exames e procedimentos oficiais da Clínica Lúmina para 2026.</p>
+                        </div>
+                        <button class="btn btn-gold" id="btn-add-exam-modal">
+                            <i class="fa-solid fa-notes-medical"></i> Adicionar Procedimento
+                        </button>
+                    </div>
+
+                    <!-- Busca e Controles -->
+                    <div class="control-bar" style="margin-bottom: 25px;">
+                        <div class="search-box" style="flex: 1;">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="exam-search" placeholder="Buscar por Nome do Procedimento ou Categoria...">
+                        </div>
+                    </div>
+
+                    <!-- Tabela Premium de Exames -->
+                    <div class="exams-table-container">
+                        <table class="exams-table">
+                            <thead>
+                                <tr>
+                                    <th>Procedimento / Exame</th>
+                                    <th>Categoria</th>
+                                    <th>Valor Mínimo (a partir de)</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="exams-table-body">
+                                <!-- Gerado Dinamicamente por app.js -->
+                            </tbody>
+                        </table>
                     </div>
                 </section>
 
@@ -423,6 +465,55 @@
             </form>
         </div>
     </div>
+
+    <!-- MODAL: NOVO EXAME -->
+    <div class="modal" id="modal-exam">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-notes-medical gold-text"></i> <span id="exam-modal-title">Adicionar Procedimento</span></h3>
+                <button class="modal-close" id="btn-close-exam-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-add-exam">
+                <input type="hidden" id="exam-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="exam-name">Nome do Procedimento / Exame</label>
+                        <input type="text" id="exam-name" required placeholder="Ex: Gengivoplastia (por dente)">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="exam-price">Preço Mínimo (R$)</label>
+                            <input type="number" id="exam-price" required step="0.01" min="0" placeholder="Ex: 200">
+                        </div>
+                        <div class="form-group">
+                            <label for="exam-category">Categoria</label>
+                            <select id="exam-category" required>
+                                <option value="">Selecione a categoria...</option>
+                                <option value="Prevenção">Prevenção</option>
+                                <option value="Odontopediatria">Odontopediatria</option>
+                                <option value="Diagnóstico">Diagnóstico</option>
+                                <option value="Clínico Geral">Clínico Geral</option>
+                                <option value="Cirurgia">Cirurgia</option>
+                                <option value="Endodontia">Endodontia</option>
+                                <option value="Estética">Estética</option>
+                                <option value="Prótese">Prótese</option>
+                                <option value="Ortodontia">Ortodontia</option>
+                                <option value="Implantodontia">Implantodontia</option>
+                                <option value="Periodontia">Periodontia</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-exam-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-gold" id="btn-submit-exam">Cadastrar Procedimento</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Container de Notificações Toast -->
+    <div id="toast-container"></div>
 
     <!-- JS Customizado -->
     <script src="/frontend/app.js"></script>

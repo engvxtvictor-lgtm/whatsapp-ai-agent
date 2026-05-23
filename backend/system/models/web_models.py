@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.system.database import Base
 
 
@@ -21,8 +21,12 @@ class ClientWeb(Base):
     upsell_success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se conseguiu fazer upsell
     upsell_service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)   # Qual foi o serviço do upsell
     status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending, confirmed, cancelled
+    exam_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("web_exams.id"), nullable=True)
+    needs_human: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     
+    exam: Mapped[Optional["ExamWeb"]] = relationship("ExamWeb", back_populates="clients")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
 
 
 class AdminWeb(Base):
@@ -56,5 +60,18 @@ class FollowupWeb(Base):
     message_template: Mapped[str] = mapped_column(String(500), nullable=False) # Template da mensagem com placeholders
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False) # Status de atividade
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class ExamWeb(Base):
+    __tablename__ = "web_exams"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)       # Nome do procedimento (ex: Raspagem, Implante)
+    price: Mapped[float] = mapped_column(nullable=False)                 # Preço a partir de
+    category: Mapped[str] = mapped_column(String(50), nullable=False)    # Categoria do exame/procedimento
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    clients: Mapped[list["ClientWeb"]] = relationship("ClientWeb", back_populates="exam")
+
 
 

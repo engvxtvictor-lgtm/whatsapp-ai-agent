@@ -41,7 +41,9 @@ document.addEventListener("DOMContentLoaded", () => {
     // Estado Global do Frontend
     let allClients = [];
     let allAdmins = [];
+    let allExams = [];
     const selectedClients = new Set();
+    const activeHumanRequests = new Set();
 
     // Referências do DOM
     const tabNavItems = document.querySelectorAll(".nav-item");
@@ -93,6 +95,17 @@ document.addEventListener("DOMContentLoaded", () => {
     const campaignSelectedCountTitle = document.getElementById("campaign-selected-count-title");
     const campaignSelectedCountDesc = document.getElementById("campaign-selected-count-desc");
 
+    // Helper to normalize and get Category HSL Badge Class
+    function getCategoryClass(category) {
+        if (!category) return 'badge-cat-none';
+        const normalized = category.toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") // remove accents
+            .replace(/\s+/g, '-') // spaces to hyphen
+            .replace(/[^a-z0-9\-]/g, ''); // keep alphanumeric and hyphen
+        return `badge-cat-${normalized}`;
+    }
+
     // 1. NAVEGAÇÃO DE ABAS
     tabNavItems.forEach(item => {
         item.addEventListener("click", (e) => {
@@ -127,6 +140,10 @@ document.addEventListener("DOMContentLoaded", () => {
             pageTitle.innerText = "Campanhas & Follow-Up";
             pageDescription.innerText = "Dispare mensagens personalizadas e automatize lembretes pós-consulta.";
             updateCampaignSelectionPanel();
+        } else if (tab === "exams") {
+            pageTitle.innerText = "Tabela de Exames & Valores";
+            pageDescription.innerText = "Tabela de exames e procedimentos oficiais da Clínica Lúmina para 2026.";
+            renderExams();
         }
     }
 
@@ -165,7 +182,7 @@ document.addEventListener("DOMContentLoaded", () => {
             const isSelected = selectedClients.has(client.id);
 
             const card = document.createElement("div");
-            card.className = `client-card ${isSelected ? 'selected' : ''}`;
+            card.className = `client-card ${isSelected ? 'selected' : ''} ${client.needs_human ? 'needs-human' : ''}`;
             card.setAttribute("data-id", client.id);
 
             // Determina Ícone e Cor do Canal
@@ -211,6 +228,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 </div>
             `;
 
+            // Category badge
+            const categoryBadgeHtml = client.exam_category
+                ? `<span class="badge-category ${getCategoryClass(client.exam_category)}">
+                       <i class="fa-solid fa-tag"></i> ${client.exam_category}
+                   </span>`
+                : '';
+
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
                 ${statusBadgeHtml}
@@ -228,6 +252,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     <span class="badge badge-service">
                         ${client.service}
                     </span>
+                    ${categoryBadgeHtml}
                     ${upsellBadge}
                 </div>
                 ${appointmentBadge}
@@ -324,11 +349,32 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
 
-            // Clique no Card completo (alterna selecao se clicar fora dos toggles/actions)
-            card.addEventListener("click", (e) => {
+            // Clique no Card completo (alterna selecao ou abre wa.me se precisar de suporte)
+            card.addEventListener("click", async (e) => {
                 if (e.target.closest('.client-ia-toggle') || e.target.closest('.client-actions') || e.target.closest('.client-card-select')) {
                     return;
                 }
+                
+                if (client.needs_human) {
+                    // Open wa.me link directly
+                    window.open(`https://wa.me/${client.phone}`, "_blank");
+                    
+                    // Resolve needs_human on the backend
+                    try {
+                        const res = await fetch(`/api/clients/${client.id}/resolve-human`, {
+                            method: "PUT"
+                        });
+                        if (res.ok) {
+                            client.needs_human = false;
+                            activeHumanRequests.delete(client.id);
+                            renderClients(); // Re-render to update classes and badges
+                        }
+                    } catch (err) {
+                        console.error("Erro ao resolver suporte humano:", err);
+                    }
+                    return;
+                }
+
                 const newStatus = !selectedClients.has(client.id);
                 checkbox.checked = newStatus;
                 toggleClientSelection(client.id, newStatus);
@@ -771,17 +817,322 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // Popula dinamicamente os seletores de serviço com os exames vindos do backend
+    function populateServiceSelects() {
+        const clientServiceSelect = document.getElementById("client-service");
+        const followupServiceSelect = document.getElementById("followup-service");
+
+        if (!filterServiceSelect || !clientServiceSelect || !followupServiceSelect) return;
+
+        const filterVal = filterServiceSelect.value;
+        const clientVal = clientServiceSelect.value;
+        const followupVal = followupServiceSelect.value;
+
+        // Limpa opções, mantendo apenas a padrão
+        filterServiceSelect.innerHTML = `<option value="">Todos os Serviços</option>`;
+        clientServiceSelect.innerHTML = `<option value="">Selecione o serviço...</option>`;
+        followupServiceSelect.innerHTML = `<option value="">Selecione o serviço...</option>`;
+
+        // Ordena exames alfabeticamente
+        const sortedExams = [...allExams].sort((a, b) => a.name.localeCompare(b.name));
+
+        sortedExams.forEach(exam => {
+            // Filtro
+            const optFilter = document.createElement("option");
+            optFilter.value = exam.name;
+            optFilter.textContent = exam.name;
+            filterServiceSelect.appendChild(optFilter);
+
+            // Cadastro Cliente
+            const optClient = document.createElement("option");
+            optClient.value = exam.name;
+            optClient.textContent = `${exam.name} (a partir de R$ ${exam.price.toFixed(2).replace('.', ',')})`;
+            clientServiceSelect.appendChild(optClient);
+
+            // Follow-Up
+            const optFollowup = document.createElement("option");
+            optFollowup.value = exam.name;
+            optFollowup.textContent = exam.name;
+            followupServiceSelect.appendChild(optFollowup);
+        });
+
+        // Restaura valores selecionados previamente
+        if (allExams.some(e => e.name === filterVal)) filterServiceSelect.value = filterVal;
+        if (allExams.some(e => e.name === clientVal)) clientServiceSelect.value = clientVal;
+        if (allExams.some(e => e.name === followupVal)) followupServiceSelect.value = followupVal;
+    }
+
+    // Monitora e avisa novos pedidos de atendimento humano (Toasts)
+    function checkHumanHandoffNotifications() {
+        allClients.forEach(client => {
+            if (client.needs_human) {
+                if (!activeHumanRequests.has(client.id)) {
+                    activeHumanRequests.add(client.id);
+                    showHumanNotificationToast(client);
+                }
+            } else {
+                activeHumanRequests.delete(client.id);
+            }
+        });
+    }
+
+    // Exibe notificação toast flutuante no canto da tela
+    function showHumanNotificationToast(client) {
+        const toastContainer = document.getElementById("toast-container");
+        if (!toastContainer) return;
+
+        const toast = document.createElement("div");
+        toast.className = "toast-notification";
+        toast.setAttribute("data-client-id", client.id);
+
+        const canal = client.source === "whatsapp" ? "WhatsApp" : "Instagram";
+        const iconeCanal = client.source === "whatsapp" ? "fa-brands fa-whatsapp" : "fa-brands fa-instagram";
+
+        toast.innerHTML = `
+            <div class="toast-icon">
+                <i class="fa-solid fa-headset"></i>
+            </div>
+            <div class="toast-content">
+                <h4>Suporte Humano Solicitado</h4>
+                <p><strong>${client.name}</strong> solicita atendimento humano via ${canal}.</p>
+            </div>
+            <button class="toast-close-btn" title="Fechar">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        `;
+
+        // Clique no corpo do toast
+        toast.addEventListener("click", async (e) => {
+            if (e.target.closest(".toast-close-btn")) return; // Deixa o botão de fechar tratar o evento dele
+
+            // Abre link wa.me
+            window.open(`https://wa.me/${client.phone}`, "_blank");
+
+            // Resolve atendimento humano no backend
+            try {
+                const res = await fetch(`/api/clients/${client.id}/resolve-human`, {
+                    method: "PUT"
+                });
+                if (res.ok) {
+                    client.needs_human = false;
+                    activeHumanRequests.delete(client.id);
+                    renderClients();
+                }
+            } catch (err) {
+                console.error("Erro ao resolver atendimento humano pelo toast:", err);
+            }
+
+            // Remove da tela
+            toast.classList.remove("show");
+            setTimeout(() => toast.remove(), 400);
+        });
+
+        // Clique para fechar notificação
+        const closeBtn = toast.querySelector(".toast-close-btn");
+        closeBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            toast.classList.remove("show");
+            setTimeout(() => toast.remove(), 400);
+        });
+
+        toastContainer.appendChild(toast);
+
+        // Animação de entrada
+        setTimeout(() => toast.classList.add("show"), 100);
+
+        // Auto dispensar depois de 15 segundos
+        setTimeout(() => {
+            if (toast.parentNode) {
+                toast.classList.remove("show");
+                setTimeout(() => {
+                    if (toast.parentNode) toast.remove();
+                }, 400);
+            }
+        }, 15000);
+    }
+
+    // 7.5. GERENCIAMENTO DE EXAMES (TABELA DE EXAMES & VALORES)
+    const examSearchInput = document.getElementById("exam-search");
+    const examsTableBody = document.getElementById("exams-table-body");
+    const modalExam = document.getElementById("modal-exam");
+    const btnAddExamModal = document.getElementById("btn-add-exam-modal");
+    const btnCloseExamModal = document.getElementById("btn-close-exam-modal");
+    const btnCancelExamModal = document.getElementById("btn-cancel-exam-modal");
+    const formAddExam = document.getElementById("form-add-exam");
+    const examIdInput = document.getElementById("exam-id");
+    const examNameInput = document.getElementById("exam-name");
+    const examPriceInput = document.getElementById("exam-price");
+    const examCategorySelect = document.getElementById("exam-category");
+    const btnSubmitExam = document.getElementById("btn-submit-exam");
+    const examModalTitle = document.getElementById("exam-modal-title");
+
+    if (btnAddExamModal) {
+        btnAddExamModal.addEventListener("click", () => {
+            examModalTitle.innerText = "Adicionar Procedimento";
+            btnSubmitExam.innerText = "Cadastrar Procedimento";
+            formAddExam.reset();
+            examIdInput.value = "";
+            modalExam.classList.add("active");
+        });
+    }
+
+    if (btnCloseExamModal) {
+        btnCloseExamModal.addEventListener("click", () => {
+            modalExam.classList.remove("active");
+            formAddExam.reset();
+        });
+    }
+
+    if (btnCancelExamModal) {
+        btnCancelExamModal.addEventListener("click", () => {
+            modalExam.classList.remove("active");
+            formAddExam.reset();
+        });
+    }
+
+    if (examSearchInput) {
+        examSearchInput.addEventListener("input", renderExams);
+    }
+
+    function renderExams() {
+        if (!examsTableBody) return;
+        examsTableBody.innerHTML = "";
+
+        const query = examSearchInput ? examSearchInput.value.toLowerCase().trim() : "";
+
+        const filtered = allExams.filter(exam => {
+            return exam.name.toLowerCase().includes(query) || 
+                   exam.category.toLowerCase().includes(query);
+        });
+
+        if (filtered.length === 0) {
+            examsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="4" style="text-align: center; padding: 30px; color: rgba(255,255,255,0.4);">
+                        <i class="fa-regular fa-folder-open" style="font-size: 24px; margin-bottom: 8px; display: block;"></i>
+                        Nenhum exame ou procedimento encontrado.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        // Ordena por categoria e depois por nome
+        filtered.sort((a, b) => {
+            const catCompare = a.category.localeCompare(b.category);
+            if (catCompare !== 0) return catCompare;
+            return a.name.localeCompare(b.name);
+        });
+
+        filtered.forEach(exam => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td><strong>${exam.name}</strong></td>
+                <td><span class="badge-category ${getCategoryClass(exam.category)}"><i class="fa-solid fa-tag"></i> ${exam.category}</span></td>
+                <td>R$ ${exam.price.toFixed(2).replace('.', ',')}</td>
+                <td>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary-outline btn-xs btn-edit-exam" data-id="${exam.id}" title="Editar">
+                            <i class="fa-solid fa-pencil"></i>
+                        </button>
+                        <button class="btn btn-danger-outline btn-xs btn-delete-exam" data-id="${exam.id}" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2);" title="Excluir">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+
+            // Clique no botão Editar
+            tr.querySelector(".btn-edit-exam").addEventListener("click", () => {
+                examModalTitle.innerText = "Editar Procedimento";
+                btnSubmitExam.innerText = "Salvar Alterações";
+                examIdInput.value = exam.id;
+                examNameInput.value = exam.name;
+                examPriceInput.value = exam.price;
+                examCategorySelect.value = exam.category;
+                modalExam.classList.add("active");
+            });
+
+            // Clique no botão Excluir
+            tr.querySelector(".btn-delete-exam").addEventListener("click", async () => {
+                if (confirm(`Deseja realmente excluir o procedimento "${exam.name}"?`)) {
+                    try {
+                        const res = await fetch(`/api/exams/${exam.id}`, {
+                            method: "DELETE"
+                        });
+                        if (res.ok) {
+                            allExams = allExams.filter(e => e.id !== exam.id);
+                            renderExams();
+                            populateServiceSelects();
+                        } else {
+                            alert("Falha ao excluir o procedimento.");
+                        }
+                    } catch (error) {
+                        console.error("Erro ao deletar exame:", error);
+                        alert("Erro de conexão com o servidor.");
+                    }
+                }
+            });
+
+            examsTableBody.appendChild(tr);
+        });
+    }
+
+    if (formAddExam) {
+        formAddExam.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const id = examIdInput.value;
+            const name = examNameInput.value.trim();
+            const price = parseFloat(examPriceInput.value);
+            const category = examCategorySelect.value;
+
+            const payload = { name, price, category };
+
+            const isEdit = id !== "";
+            const url = isEdit ? `/api/exams/${id}` : "/api/exams";
+            const method = isEdit ? "PUT" : "POST";
+
+            try {
+                const res = await fetch(url, {
+                    method: method,
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const savedExam = await res.json();
+                    if (isEdit) {
+                        allExams = allExams.map(e => e.id === savedExam.id ? savedExam : e);
+                    } else {
+                        allExams.push(savedExam);
+                    }
+                    renderExams();
+                    populateServiceSelects();
+                    modalExam.classList.remove("active");
+                    formAddExam.reset();
+                } else {
+                    alert(`Erro ao ${isEdit ? 'atualizar' : 'cadastrar'} o procedimento.`);
+                }
+            } catch (error) {
+                console.error("Erro ao salvar exame:", error);
+                alert("Erro de conexão com o servidor.");
+            }
+        });
+    }
+
     // 8. CARREGAMENTO DOS DADOS (E POPULADOR AUTOMÁTICO SE BANCO VAZIO)
     async function loadData() {
         try {
-            const [clientsRes, adminsRes] = await Promise.all([
+            const [clientsRes, adminsRes, examsRes] = await Promise.all([
                 fetch("/api/clients"),
-                fetch("/api/admins")
+                fetch("/api/admins"),
+                fetch("/api/exams")
             ]);
 
-            if (clientsRes.ok && adminsRes.ok) {
+            if (clientsRes.ok && adminsRes.ok && examsRes.ok) {
                 allClients = await clientsRes.json();
                 allAdmins = await adminsRes.json();
+                allExams = await examsRes.json();
 
                 // Se o banco estiver vazio, populate com dados realistas da Clínica Lúmina automaticamente!
                 if (allClients.length === 0 && allAdmins.length === 0) {
@@ -790,8 +1141,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     return; // populateInitialDatabase fará o recarregamento
                 }
 
+                // Popula os dropdowns dinamicamente
+                populateServiceSelects();
+
                 renderClients();
                 renderAdmins();
+
+                // Renderiza tabela se estiver na aba de exames
+                const activeNav = document.querySelector(".nav-item.active");
+                if (activeNav && activeNav.getAttribute("data-tab") === "exams") {
+                    renderExams();
+                }
+
+                // Verifica suporte humano em tempo real
+                checkHumanHandoffNotifications();
+
                 await loadFollowups(); // Carrega follow-ups de forma assíncrona
             }
         } catch (error) {
@@ -839,5 +1203,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // Inicialização
     loadData();
+
+    // Polling a cada 5 segundos para atualizar dados e checar atendimento humano
+    setInterval(loadData, 5000);
 });
 
