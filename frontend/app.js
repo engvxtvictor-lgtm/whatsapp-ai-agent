@@ -42,6 +42,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let allClients = [];
     let allAdmins = [];
     let allExams = [];
+    let allSlots = [];
     const selectedClients = new Set();
     const activeHumanRequests = new Set();
 
@@ -75,8 +76,17 @@ document.addEventListener("DOMContentLoaded", () => {
     // Modais
     const modalClient = document.getElementById("modal-client");
     const modalAdmin = document.getElementById("modal-admin");
+    const modalSlot = document.getElementById("modal-slot");
     const btnAddClientModal = document.getElementById("btn-add-client-modal");
     const btnAddAdminModal = document.getElementById("btn-add-admin-modal");
+    const btnAddSlotModal = document.getElementById("btn-add-slot-modal");
+
+    // Slots refs
+    const btnCloseSlotModal = document.getElementById("btn-close-slot-modal");
+    const btnCancelSlotModal = document.getElementById("btn-cancel-slot-modal");
+    const formAddSlot = document.getElementById("form-add-slot");
+    const slotsTableBody = document.getElementById("slots-table-body");
+    const slotSearchInput = document.getElementById("slot-search");
 
     // Fechar Modais
     const btnCloseClientModal = document.getElementById("btn-close-client-modal");
@@ -144,6 +154,10 @@ document.addEventListener("DOMContentLoaded", () => {
             pageTitle.innerText = "Tabela de Exames & Valores";
             pageDescription.innerText = "Tabela de exames e procedimentos oficiais da Clínica Lúmina para 2026.";
             renderExams();
+        } else if (tab === "schedule") {
+            pageTitle.innerText = "Grade de Horários Disponíveis";
+            pageDescription.innerText = "Configure os dias e horários em que a clínica atende para que o agente virtual possa oferecer aos pacientes.";
+            renderSlots();
         }
     }
 
@@ -195,8 +209,17 @@ document.addEventListener("DOMContentLoaded", () => {
                 ? `<span class="badge badge-upsell"><i class="fa-solid fa-star"></i> Upsell: ${client.upsell_service || 'Sim'}</span>`
                 : `<span class="badge badge-no-upsell">Sem Upsell</span>`;
 
-            const appointmentBadge = client.appointment_date
-                ? `<div class="client-appointment-badge"><i class="fa-regular fa-calendar-check"></i> ${client.appointment_date}</div>`
+            let appointmentText = client.appointment_date;
+            if (client.slot_date) {
+                const parts = client.slot_date.split("-");
+                if (parts.length === 3) {
+                    const dateFormatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    const timeText = client.slot_time || "";
+                    appointmentText = `${dateFormatted}${timeText ? ' às ' + timeText : ''}`;
+                }
+            }
+            const appointmentBadge = appointmentText
+                ? `<div class="client-appointment-badge"><i class="fa-regular fa-calendar-check"></i> ${appointmentText}</div>`
                 : `<div class="client-appointment-badge" style="color: #c5a880; border-color: rgba(197,168,128,0.2);"><i class="fa-regular fa-calendar-times"></i> Sem agendamento</div>`;
 
             const statusLabels = {
@@ -1120,19 +1143,172 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     }
 
+    // 7.7. GERENCIAMENTO DE SLOTS (AGENDA)
+    if (btnAddSlotModal) {
+        btnAddSlotModal.addEventListener("click", () => {
+            formAddSlot.reset();
+            modalSlot.classList.add("active");
+        });
+    }
+
+    if (btnCloseSlotModal) {
+        btnCloseSlotModal.addEventListener("click", () => {
+            modalSlot.classList.remove("active");
+            formAddSlot.reset();
+        });
+    }
+
+    if (btnCancelSlotModal) {
+        btnCancelSlotModal.addEventListener("click", () => {
+            modalSlot.classList.remove("active");
+            formAddSlot.reset();
+        });
+    }
+
+    if (slotSearchInput) {
+        slotSearchInput.addEventListener("input", renderSlots);
+    }
+
+    const WEEKDAYS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Sábado", "Domingo"];
+
+    function renderSlots() {
+        if (!slotsTableBody) return;
+        slotsTableBody.innerHTML = "";
+
+        const query = slotSearchInput ? slotSearchInput.value.toLowerCase().trim() : "";
+
+        const filtered = allSlots.filter(slot => {
+            const dayName = WEEKDAYS[slot.weekday] || "";
+            return dayName.toLowerCase().includes(query) || 
+                   slot.time_str.includes(query);
+        });
+
+        if (filtered.length === 0) {
+            slotsTableBody.innerHTML = `
+                <tr>
+                    <td colspan="5" style="text-align: center; padding: 30px; color: rgba(255,255,255,0.4);">
+                        <i class="fa-regular fa-calendar-times" style="font-size: 24px; margin-bottom: 8px; display: block;"></i>
+                        Nenhum horário configurado na grade.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        filtered.forEach(slot => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td><strong>${WEEKDAYS[slot.weekday]}</strong></td>
+                <td>${slot.time_str}</td>
+                <td>${slot.max_patients} paciente(s)</td>
+                <td>
+                    <span class="badge" style="background-color: ${slot.is_active ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)'}; color: ${slot.is_active ? '#10b981' : '#ef4444'};">
+                        ${slot.is_active ? 'Ativo' : 'Inativo'}
+                    </span>
+                </td>
+                <td>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn btn-secondary-outline btn-xs btn-toggle-slot" data-id="${slot.id}" title="${slot.is_active ? 'Desativar' : 'Ativar'}">
+                            <i class="fa-solid ${slot.is_active ? 'fa-eye-slash' : 'fa-eye'}"></i>
+                        </button>
+                        <button class="btn btn-danger-outline btn-xs btn-delete-slot" data-id="${slot.id}" style="color: #ef4444; border-color: rgba(239, 68, 68, 0.2);" title="Excluir">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+
+            // Toggle active status
+            tr.querySelector(".btn-toggle-slot").addEventListener("click", async () => {
+                try {
+                    const res = await fetch(`/api/slots/${slot.id}/toggle`, {
+                        method: "PUT"
+                    });
+                    if (res.ok) {
+                        const updated = await res.json();
+                        allSlots = allSlots.map(s => s.id === updated.id ? updated : s);
+                        renderSlots();
+                    } else {
+                        alert("Falha ao alternar status do horário.");
+                    }
+                } catch (error) {
+                    console.error("Erro ao toggle slot:", error);
+                    alert("Erro de conexão.");
+                }
+            });
+
+            // Delete slot
+            tr.querySelector(".btn-delete-slot").addEventListener("click", async () => {
+                if (confirm(`Deseja realmente excluir este horário (${WEEKDAYS[slot.weekday]} às ${slot.time_str})?`)) {
+                    try {
+                        const res = await fetch(`/api/slots/${slot.id}`, {
+                            method: "DELETE"
+                        });
+                        if (res.ok) {
+                            allSlots = allSlots.filter(s => s.id !== slot.id);
+                            renderSlots();
+                        } else {
+                            alert("Falha ao excluir o horário.");
+                        }
+                    } catch (error) {
+                        console.error("Erro ao deletar slot:", error);
+                        alert("Erro de conexão.");
+                    }
+                }
+            });
+
+            slotsTableBody.appendChild(tr);
+        });
+    }
+
+    if (formAddSlot) {
+        formAddSlot.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const weekday = parseInt(document.getElementById("slot-weekday").value);
+            const time_str = document.getElementById("slot-time").value.trim();
+            const max_patients = parseInt(document.getElementById("slot-max-patients").value);
+
+            const payload = { weekday, time_str, max_patients, is_active: true };
+
+            try {
+                const res = await fetch("/api/slots", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+
+                if (res.ok) {
+                    const newSlot = await res.json();
+                    allSlots.push(newSlot);
+                    renderSlots();
+                    modalSlot.classList.remove("active");
+                    formAddSlot.reset();
+                } else {
+                    const err = await res.json();
+                    alert("Erro ao cadastrar horário: " + (err.detail || "Erro desconhecido"));
+                }
+            } catch (error) {
+                console.error("Erro ao salvar slot:", error);
+                alert("Erro de conexão com o servidor.");
+            }
+        });
+    }
+
     // 8. CARREGAMENTO DOS DADOS (E POPULADOR AUTOMÁTICO SE BANCO VAZIO)
     async function loadData() {
         try {
-            const [clientsRes, adminsRes, examsRes] = await Promise.all([
+            const [clientsRes, adminsRes, examsRes, slotsRes] = await Promise.all([
                 fetch("/api/clients"),
                 fetch("/api/admins"),
-                fetch("/api/exams")
+                fetch("/api/exams"),
+                fetch("/api/slots")
             ]);
 
-            if (clientsRes.ok && adminsRes.ok && examsRes.ok) {
+            if (clientsRes.ok && adminsRes.ok && examsRes.ok && slotsRes.ok) {
                 allClients = await clientsRes.json();
                 allAdmins = await adminsRes.json();
                 allExams = await examsRes.json();
+                allSlots = await slotsRes.json();
 
                 // Se o banco estiver vazio, populate com dados realistas da Clínica Lúmina automaticamente!
                 if (allClients.length === 0 && allAdmins.length === 0) {
@@ -1147,10 +1323,15 @@ document.addEventListener("DOMContentLoaded", () => {
                 renderClients();
                 renderAdmins();
 
-                // Renderiza tabela se estiver na aba de exames
+                // Renderiza tabela se estiver na aba de exames ou agenda
                 const activeNav = document.querySelector(".nav-item.active");
-                if (activeNav && activeNav.getAttribute("data-tab") === "exams") {
-                    renderExams();
+                if (activeNav) {
+                    const tab = activeNav.getAttribute("data-tab");
+                    if (tab === "exams") {
+                        renderExams();
+                    } else if (tab === "schedule") {
+                        renderSlots();
+                    }
                 }
 
                 // Verifica suporte humano em tempo real

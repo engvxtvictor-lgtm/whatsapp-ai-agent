@@ -27,6 +27,8 @@ class ClientSchema(BaseModel):
     
     # Novos campos de agendamento e upsell
     appointment_date: Optional[str] = None
+    slot_date: Optional[str] = None
+    slot_time: Optional[str] = None
     upsell_success: bool = False
     upsell_service: Optional[str] = None
     status: str = "pending"
@@ -65,7 +67,7 @@ class CampaignSchema(BaseModel):
 @router.get("/clients", response_model=List[ClientSchema])
 async def get_clients(db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(ClientWeb).options(selectinload(ClientWeb.exam)).order_by(ClientWeb.id.desc())
+        select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).order_by(ClientWeb.id.desc())
     )
     clients = result.scalars().all()
     
@@ -86,6 +88,8 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
             service=client.service,
             profile_pic=client.profile_pic,
             appointment_date=client.appointment_date,
+            slot_date=client.slot_date.isoformat() if client.slot_date else None,
+            slot_time=client.slot.time_str if client.slot else None,
             upsell_success=client.upsell_success,
             upsell_service=client.upsell_service,
             status=client.status,
@@ -129,7 +133,7 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
     
     # Recarrega com relacionamento
     result = await db.execute(
-        select(ClientWeb).options(selectinload(ClientWeb.exam)).where(ClientWeb.id == new_client.id)
+        select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).where(ClientWeb.id == new_client.id)
     )
     new_client = result.scalars().first()
     
@@ -142,6 +146,8 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         service=new_client.service,
         profile_pic=new_client.profile_pic,
         appointment_date=new_client.appointment_date,
+        slot_date=new_client.slot_date.isoformat() if new_client.slot_date else None,
+        slot_time=new_client.slot.time_str if new_client.slot else None,
         upsell_success=new_client.upsell_success,
         upsell_service=new_client.upsell_service,
         status=new_client.status,
@@ -156,7 +162,9 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
 
 @router.put("/clients/{client_id}/confirm")
 async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ClientWeb).where(ClientWeb.id == client_id))
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id)
+    )
     client = result.scalars().first()
     if not client:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
@@ -165,11 +173,16 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
     await db.commit()
     await db.refresh(client)
     
+    # Formata data de agendamento usando slot_date se disponível
+    appointment_text = client.appointment_date
+    if client.slot_date and client.slot:
+        appointment_text = f"{client.slot_date.strftime('%d/%m/%Y')} às {client.slot.time_str}"
+        
     # Disparar mensagem de confirmacao estrita no WhatsApp
     confirm_msg = (
         f"✅ *Consulta Confirmada!*\n\n"
         f"Ola *{client.name}*, sua consulta de *{client.service}* foi confirmada com sucesso pelo(a) *{req.admin_name}*!\n"
-        f"📅 *Data/Hora:* {client.appointment_date}\n"
+        f"📅 *Data/Hora:* {appointment_text}\n"
     )
     if client.upsell_success and client.upsell_service:
         confirm_msg += f"➕ *Servico Adicional (Upsell):* {client.upsell_service}\n"

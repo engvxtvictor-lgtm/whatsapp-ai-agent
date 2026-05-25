@@ -6,6 +6,7 @@ from backend.system.config import settings
 from backend.system.logger import logger
 from backend.system.database import AsyncSession
 from backend.system.models.web_models import ExamWeb
+from backend.agent.services.schedule_service import get_available_slots_context
 
 # ──────────────────────────────────────────────
 # PROMPT DE SISTEMA DA LÚMINA
@@ -19,23 +20,25 @@ Instruções de Personalidade e Tom:
 3. NUNCA cite termos técnicos como "sistema", "banco de dados", "fluxo de fechamento", "JSON", "metadados", "CONFIANÇA", "Ollama", "FastAPI" ou qualquer detalhe operacional/técnico de programação.
 4. Explique os procedimentos com linguagem clara e reconfortante (como uma especialista acolhedora da recepção da clínica).
 
-Fluxo de Conversação / Fechamento:
-- Quando o paciente iniciar a conversa ou demonstrar interesse, apresente uma lista clara com os serviços que oferecemos (com base na tabela abaixo) e pergunte qual deles ele deseja.
-- Após ele escolher o serviço de interesse:
-  1. Peça educadamente o Nome Completo e o CPF (para fazer o cadastro na recepção).
-  2. Após ele fornecer os dados, pergunte qual dia ele tem disponibilidade para que você possa sugerir um horário.
-  3. Depois de confirmado o dia e horário da consulta (Agendamento finalizado), vá para o Follow-Up: confirme que está tudo certo e ofereça de forma sutil um serviço adicional (UPSELL) que combine com o perfil dele.
+Fluxo de Conversação / Fechamento (Siga os passos em ordem):
+- PASSO 1 (Início): Se for a sua primeira mensagem na conversa, NÃO liste nossos serviços no texto e NÃO ofereça enviar o PDF (ele já é enviado automaticamente pelo sistema). Apenas diga: "Acabei de enviar o nosso catálogo em PDF logo abaixo. Qual desses serviços chamou sua atenção?".
+- PASSO 2 (Coleta de Dados): Quando ele responder dizendo qual serviço ele quer, peça educadamente o Nome Completo e o CPF (diga que precisa para o cadastro).
+- PASSO 3 (Agendamento): Quando ele fornecer os dados, informe nosso horário de funcionamento (Segunda a Sexta, das 09h00 às 18h00) e pergunte qual dia ele prefere.
+- PASSO 4 (Sugestão de Horário): Quando ele disser o dia, dê UMA ou DUAS sugestões de horário específico baseadas na lista de HORÁRIOS DISPONÍVEIS abaixo.
+- PASSO 5 (Follow-Up / Upsell): Depois que ele confirmar o horário escolhido, confirme que está tudo certo e ofereça de forma sutil um serviço adicional (UPSELL) que combine com o perfil dele.
   4. Nota de Sistema: O CPF que você vai receber do histórico estará censurado por segurança (ex: 123.45*.***-**). Apenas aceite-o e siga com o atendimento sem comentar sobre a censura.
 - Suporte Humano: Se o paciente solicitar falar com um humano, defina "needs_human": true nos METADADOS.
 
-Ao final de TODA resposta, você DEVE incluir exatamente essas duas linhas estruturadas de metadados:
+*** ATENÇÃO CRÍTICA DO SISTEMA ***
+Ao final de TODA resposta, independentemente do que você disser no chat, você é ABSOLUTAMENTE OBRIGADA a imprimir exatamente estas duas linhas. Elas são ocultas e servem para o sistema interno. Se você omiti-las, o sistema irá falhar:
 CONFIANÇA: [número de 0 a 100]
-METADADOS: {"name": "nome_do_paciente_ou_null", "cpf": "cpf_ou_null", "service": "servico_principal_ou_null", "appointment_date": "dia_e_horario_ou_null", "upsell_success": true_ou_false, "upsell_service": "servico_adicional_ou_null", "needs_human": true_ou_false}
+METADADOS: {"name": "nome_do_paciente_ou_null", "cpf": "cpf_ou_null", "service": "servico_principal_ou_null", "appointment_date": "dia_e_horario_ou_null", "slot_date": "YYYY-MM-DD_ou_null", "slot_time": "HH:MM_ou_null", "upsell_success": true_ou_false, "upsell_service": "servico_adicional_ou_null", "needs_human": true_ou_false}
+**********************************
 
 Regras estritas:
 - O JSON na linha METADADOS deve conter chaves e valores válidos em JSON (use null para campos não identificados).
 - Não invente preços ou serviços além dos listados formalmente pela clínica.
-- Máximo 3 parágrafos de texto no corpo da mensagem."""
+- Seja EXTREMAMENTE concisa e direta. Suas respostas devem ser CURTAS (máximo de 1 a 2 parágrafos pequenos). Não enrole."""
 
 
 # ──────────────────────────────────────────────
@@ -127,25 +130,29 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
 # EXTRAÇÃO DE METADADOS DA RESPOSTA DA IA
 # ──────────────────────────────────────────────
 def _parse_confidence(text: str) -> float:
-    for line in reversed(text.split("\n")):
-        if "CONFIANÇA:" in line or "CONFIAŃCA:" in line:
-            try:
-                parts = line.split(":")
-                val = parts[1].strip().replace("[", "").replace("]", "").replace("%", "")
-                return float(val) / 100
-            except Exception:
-                pass
+    clean_text = text.replace("**", "").replace("*", "")
+    match = re.search(r'CONFIANÇA:\s*\[?(\d+)', clean_text, re.IGNORECASE)
+    if match:
+        return float(match.group(1)) / 100
     return 0.5
 
 
 def _parse_metadata(text: str) -> dict | None:
-    for line in reversed(text.split("\n")):
-        if "METADADOS:" in line:
-            try:
-                json_str = line.split("METADADOS:")[1].strip()
-                return json.loads(json_str)
-            except Exception as e:
-                logger.error(f"Erro ao parsear metadados da IA: {e}")
+    clean_text = text.replace("**", "").replace("*", "")
+    try:
+        # Tenta achar um bloco JSON válido no texto após METADADOS:
+        match = re.search(r'METADADOS:\s*(?:```json)?\s*(\{.*?\})\s*(?:```)?', clean_text, re.DOTALL | re.IGNORECASE)
+        if match:
+            return json.loads(match.group(1))
+        
+        # Fallback: tenta achar qualquer dicionário JSON válido
+        match_fallback = re.search(r'\{.*?\}', clean_text, re.DOTALL)
+        if match_fallback:
+            data = json.loads(match_fallback.group(0))
+            if "name" in data or "cpf" in data:
+                return data
+    except Exception as e:
+        logger.error(f"Erro ao parsear metadados da IA. Erro: {e}")
     return None
 
 
@@ -266,6 +273,8 @@ def _build_simulated_response(message: str, history: list) -> str:
         "cpf": "detectado" if cpf else None,
         "service": service,
         "appointment_date": appointment_date,
+        "slot_date": None,
+        "slot_time": None,
         "upsell_success": False,
         "upsell_service": None,
         "needs_human": needs_human
@@ -340,14 +349,23 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
                 services_context = "\n\nProcedimentos e Exames Disponíveis na Clínica Lúmina (Valores a Partir De):\n"
                 for e in exams:
                     services_context += f"- {e.name} (Valor: R$ {e.price:.2f}) [Categoria: {e.category}]\n"
-                services_context += "\nUse a tabela acima para responder dúvidas e ofereça upsell quando pertinente!"
+                services_context += "\nNÃO liste todos esses serviços no chat. Use essa tabela APENAS para consulta interna caso o paciente pergunte o preço de algo específico ou para oferecer upsell quando pertinente!"
     except Exception as e:
         logger.error(f"Erro ao carregar exames do banco: {e}")
+
+    # 2b. Carrega slots disponíveis da agenda
+    slots_context = ""
+    try:
+        slots_context = await get_available_slots_context(days_ahead=7)
+    except Exception as e:
+        logger.error(f"Erro ao carregar slots de agenda: {e}")
 
     # 3. Monta o system prompt completo
     system = SYSTEM
     if services_context:
         system += services_context
+    if slots_context:
+        system += slots_context
     if faq_context:
         system += f"\n\n{faq_context}"
 
@@ -367,6 +385,7 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
         text = _build_simulated_response(message, history)
 
     # 6. Parseia e limpa a resposta
+    logger.info(f"TEXTO BRUTO DA IA:\n{text}")
     confidence = _parse_confidence(text)
     metadata = _parse_metadata(text)
     clean = _remove_structured_lines(text)

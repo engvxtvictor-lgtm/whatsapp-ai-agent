@@ -65,6 +65,10 @@
                     <i class="fa-solid fa-notes-medical"></i>
                     <span>Tabela de Exames</span>
                 </a>
+                <a href="#" class="nav-item" data-tab="schedule">
+                    <i class="fa-solid fa-calendar-days"></i>
+                    <span>Agenda & Horários</span>
+                </a>
                 <a href="#" class="nav-item" data-tab="campaigns">
                     <i class="fa-solid fa-paper-plane"></i>
                     <span>Campanhas & Follow-Up</span>
@@ -237,6 +241,45 @@
                                 </tr>
                             </thead>
                             <tbody id="exams-table-body">
+                                <!-- Gerado Dinamicamente por app.js -->
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                <!-- ABA 2.7: AGENDA -->
+                <section id="tab-schedule" class="tab-panel">
+                    <div class="tab-section-header">
+                        <div>
+                            <h3>Grade de Horários Disponíveis</h3>
+                            <p>Configure os dias e horários em que a clínica atende para que o agente virtual possa oferecer aos pacientes.</p>
+                        </div>
+                        <button class="btn btn-gold" id="btn-add-slot-modal">
+                            <i class="fa-solid fa-plus"></i> Novo Horário
+                        </button>
+                    </div>
+
+                    <!-- Busca e Controles -->
+                    <div class="control-bar" style="margin-bottom: 25px;">
+                        <div class="search-box" style="flex: 1;">
+                            <i class="fa-solid fa-magnifying-glass"></i>
+                            <input type="text" id="slot-search" placeholder="Buscar por dia ou horário (ex: Segunda, 09:00)...">
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Slots -->
+                    <div class="exams-table-container">
+                        <table class="exams-table">
+                            <thead>
+                                <tr>
+                                    <th>Dia da Semana</th>
+                                    <th>Horário</th>
+                                    <th>Máximo de Pacientes</th>
+                                    <th>Status</th>
+                                    <th>Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="slots-table-body">
                                 <!-- Gerado Dinamicamente por app.js -->
                             </tbody>
                         </table>
@@ -461,6 +504,47 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary-outline" id="btn-cancel-followup-modal">Cancelar</button>
                     <button type="submit" class="btn btn-gold">Criar Automação</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: NOVO SLOT DE AGENDA -->
+    <div class="modal" id="modal-slot">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-calendar-plus gold-text"></i> Adicionar Horário na Grade</h3>
+                <button class="modal-close" id="btn-close-slot-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-add-slot">
+                <div class="modal-body">
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="slot-weekday">Dia da Semana</label>
+                            <select id="slot-weekday" required>
+                                <option value="">Selecione o dia...</option>
+                                <option value="0">Segunda-feira</option>
+                                <option value="1">Terça-feira</option>
+                                <option value="2">Quarta-feira</option>
+                                <option value="3">Quinta-feira</option>
+                                <option value="4">Sexta-feira</option>
+                                <option value="5">Sábado</option>
+                                <option value="6">Domingo</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="slot-time">Horário (HH:MM)</label>
+                            <input type="text" id="slot-time" required placeholder="Ex: 09:00" pattern="^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$">
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label for="slot-max-patients">Vagas Máximas por Horário</label>
+                        <input type="number" id="slot-max-patients" required min="1" max="10" value="1">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-slot-modal">Cancelar</button>
+                    <button type="submit" class="btn btn-gold">Cadastrar Horário</button>
                 </div>
             </form>
         </div>

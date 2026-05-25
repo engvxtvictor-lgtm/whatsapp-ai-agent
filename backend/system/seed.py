@@ -6,7 +6,7 @@ import asyncio
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 from backend.system.database import AsyncSession, engine, Base
-from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb, ExamWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb, ExamWeb, ScheduleSlotWeb
 
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
@@ -171,6 +171,21 @@ async def seed_db():
             )
         ]
         session.add_all(followups)
+
+        # Criando slots de agendamento padrão (Seg-Sex, 08h às 18h)
+        print("Criando slots de agendamento padrao...")
+        slots = []
+        for weekday in range(5):  # 0=Seg, 4=Sex
+            for hour in ["08:00", "09:00", "10:00", "11:00", "14:00", "15:00", "16:00", "17:00", "18:00"]:
+                slots.append(
+                    ScheduleSlotWeb(
+                        weekday=weekday,
+                        time_str=hour,
+                        max_patients=1,
+                        is_active=True
+                    )
+                )
+        session.add_all(slots)
         await session.commit()
             
     print("Semeadura concluida!")

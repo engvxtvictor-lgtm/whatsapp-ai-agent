@@ -21,6 +21,7 @@ async def test_chat(request: Request):
     original_send = whatsapp.send_message
     original_escalation = whatsapp.send_escalation
     original_notify = whatsapp.notify_agent
+    original_document = whatsapp.send_document
 
     async def _mock_send(p, t):
         captured.append(t)
@@ -32,16 +33,22 @@ async def test_chat(request: Request):
     async def _mock_notify(p, m):
         pass
 
+    async def _mock_document(phone, pdf_url, filename, caption):
+        captured.append(f"[📎 Documento Anexado: {filename}]\n{caption}")
+        return True
+
     async with _lock:
         whatsapp.send_message = _mock_send
         whatsapp.send_escalation = _mock_escalation
         whatsapp.notify_agent = _mock_notify
+        whatsapp.send_document = _mock_document
         try:
             await handle(phone, text)
         finally:
             whatsapp.send_message = original_send
             whatsapp.send_escalation = original_escalation
             whatsapp.notify_agent = original_notify
+            whatsapp.send_document = original_document
 
     return {"messages": captured}
 

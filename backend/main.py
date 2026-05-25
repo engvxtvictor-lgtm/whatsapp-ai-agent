@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from backend.agent.api.webhook import router as webhook_router
 from backend.agent.api.dashboard import router as dashboard_router
 from backend.agent.api.test_chat import router as test_router
+from backend.agent.api.schedule import router as schedule_router
 from backend.agent.services.followup_scheduler import create_scheduler
 import backend.system.models  # Garante que os modelos sejam carregados para criação das tabelas
 from backend.system.database import create_tables
@@ -31,6 +32,8 @@ app = FastAPI(title="WhatsApp AI Agent", version="1.0.0", lifespan=lifespan)
 app.include_router(webhook_router)
 app.include_router(dashboard_router)
 app.include_router(test_router)
+app.include_router(schedule_router)
+
 
 
 # Rota para servir a página inicial do Frontend

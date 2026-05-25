@@ -1,6 +1,6 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey
+from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey, Date
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.system.database import Base
 
@@ -16,15 +16,18 @@ class ClientWeb(Base):
     service: Mapped[str] = mapped_column(String(50), nullable=False)      # Clareamento, Limpeza, Canal, Implante, etc.
     profile_pic: Mapped[str] = mapped_column(String(255), nullable=True)
     
-    # Novos campos para agendamento e upsell
-    appointment_date: Mapped[Optional[str]] = mapped_column(String(100), nullable=True) # Horário (dia) desejado para consulta
-    upsell_success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se conseguiu fazer upsell
-    upsell_service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)   # Qual foi o serviço do upsell
-    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending, confirmed, cancelled
+    # Agendamento e upsell
+    appointment_date: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # texto legado
+    slot_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("web_schedule_slots.id"), nullable=True)
+    slot_date: Mapped[Optional[date]] = mapped_column(Date, nullable=True)  # data real do agendamento
+    upsell_success: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    upsell_service: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)
     exam_id: Mapped[Optional[int]] = mapped_column(Integer, ForeignKey("web_exams.id"), nullable=True)
     needs_human: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    
+
     exam: Mapped[Optional["ExamWeb"]] = relationship("ExamWeb", back_populates="clients")
+    slot: Mapped[Optional["ScheduleSlotWeb"]] = relationship("ScheduleSlotWeb", back_populates="clients")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -73,6 +76,20 @@ class ExamWeb(Base):
 
 
     clients: Mapped[list["ClientWeb"]] = relationship("ClientWeb", back_populates="exam")
+
+
+class ScheduleSlotWeb(Base):
+    """Grade de horários disponíveis configurada pelo admin."""
+    __tablename__ = "web_schedule_slots"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    weekday: Mapped[int] = mapped_column(Integer, nullable=False)       # 0=seg, 1=ter, ..., 6=dom
+    time_str: Mapped[str] = mapped_column(String(5), nullable=False)    # ex: "09:00"
+    max_patients: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    clients: Mapped[list["ClientWeb"]] = relationship("ClientWeb", back_populates="slot")
 
 
 class FollowupLogWeb(Base):

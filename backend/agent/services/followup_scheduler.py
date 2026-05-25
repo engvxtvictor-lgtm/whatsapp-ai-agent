@@ -81,11 +81,13 @@ async def run_followup_check():
         clients = cl_res.scalars().all()
 
         for client in clients:
-            appointment_dt = _parse_appointment_date(client.appointment_date or "")
-            if not appointment_dt:
-                continue
-
-            appointment_date = appointment_dt.date()
+            if client.slot_date:
+                appointment_date = client.slot_date
+            else:
+                appointment_dt = _parse_appointment_date(client.appointment_date or "")
+                if not appointment_dt:
+                    continue
+                appointment_date = appointment_dt.date()
 
             for followup in followups:
                 # Verifica se o serviço do cliente bate com o gatilho do follow-up

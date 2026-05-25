@@ -1,4 +1,4 @@
-# 🤖 WhatsApp AI Agent - Arquitetura do Sistema
+ # 🤖 WhatsApp AI Agent - Arquitetura do Sistema
 
 Este repositório contém um **Agente de Atendimento Inteligente e Híbrido** para WhatsApp. Ele combina busca léxica rápida em base local de FAQ, geração aumentada por recuperação (RAG) usando modelos de linguagem avançados (via Groq/Llama 3) e uma camada resiliente de controle de sessão com transição automática para atendimento humano.
 

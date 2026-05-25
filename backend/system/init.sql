@@ -9,6 +9,16 @@ CREATE TABLE IF NOT EXISTS web_exams (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Tabela de Grade de Horários
+CREATE TABLE IF NOT EXISTS web_schedule_slots (
+    id SERIAL PRIMARY KEY,
+    weekday INTEGER NOT NULL,          -- 0=seg, 1=ter, ..., 6=dom
+    time_str VARCHAR(5) NOT NULL,       -- ex: "09:00"
+    max_patients INTEGER NOT NULL DEFAULT 1,
+    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- Tabela de Clientes
 CREATE TABLE IF NOT EXISTS web_clients (
     id SERIAL PRIMARY KEY,
@@ -21,6 +31,8 @@ CREATE TABLE IF NOT EXISTS web_clients (
     
     -- Novos campos para agendamento e upsell
     appointment_date VARCHAR(100),
+    slot_id INTEGER REFERENCES web_schedule_slots(id),
+    slot_date DATE,
     upsell_success BOOLEAN DEFAULT FALSE NOT NULL,
     upsell_service VARCHAR(100),
     status VARCHAR(20) DEFAULT 'pending' NOT NULL,
@@ -58,6 +70,14 @@ CREATE TABLE IF NOT EXISTS web_followups (
     message_template VARCHAR(500) NOT NULL,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela de Log de Envio de Follow-Up
+CREATE TABLE IF NOT EXISTS web_followup_logs (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES web_clients(id) ON DELETE CASCADE,
+    followup_id INTEGER NOT NULL REFERENCES web_followups(id) ON DELETE CASCADE,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Inserção de dados iniciais para testes
@@ -115,4 +135,23 @@ VALUES
 ('Acompanhamento Pós-Cirúrgico', 'Implante', 1, 'Olá [NOME], como está a recuperação do seu procedimento de [SERVIÇO]? Qualquer desconforto ou dúvida, estamos aqui!', TRUE),
 ('Feedback de Sensibilidade', 'Clareamento', 3, 'Olá [NOME], sentiu alguma sensibilidade após a sessão de [SERVIÇO]? Lembre-se de evitar alimentos corantes hoje!', TRUE)
 ON CONFLICT DO NOTHING;
+
+-- Inserção de slots na grade (Seg-Sex, 08h às 18h, de hora em hora)
+INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
+VALUES
+-- Segunda-feira (weekday = 0)
+(0, '08:00', 1, TRUE), (0, '09:00', 1, TRUE), (0, '10:00', 1, TRUE), (0, '11:00', 1, TRUE),
+(0, '14:00', 1, TRUE), (0, '15:00', 1, TRUE), (0, '16:00', 1, TRUE), (0, '17:00', 1, TRUE), (0, '18:00', 1, TRUE),
+-- Terça-feira (weekday = 1)
+(1, '08:00', 1, TRUE), (1, '09:00', 1, TRUE), (1, '10:00', 1, TRUE), (1, '11:00', 1, TRUE),
+(1, '14:00', 1, TRUE), (1, '15:00', 1, TRUE), (1, '16:00', 1, TRUE), (1, '17:00', 1, TRUE), (1, '18:00', 1, TRUE),
+-- Quarta-feira (weekday = 2)
+(2, '08:00', 1, TRUE), (2, '09:00', 1, TRUE), (2, '10:00', 1, TRUE), (2, '11:00', 1, TRUE),
+(2, '14:00', 1, TRUE), (2, '15:00', 1, TRUE), (2, '16:00', 1, TRUE), (2, '17:00', 1, TRUE), (2, '18:00', 1, TRUE),
+-- Quinta-feira (weekday = 3)
+(3, '08:00', 1, TRUE), (3, '09:00', 1, TRUE), (3, '10:00', 1, TRUE), (3, '11:00', 1, TRUE),
+(3, '14:00', 1, TRUE), (3, '15:00', 1, TRUE), (3, '16:00', 1, TRUE), (3, '17:00', 1, TRUE), (3, '18:00', 1, TRUE),
+-- Sexta-feira (weekday = 4)
+(4, '08:00', 1, TRUE), (4, '09:00', 1, TRUE), (4, '10:00', 1, TRUE), (4, '11:00', 1, TRUE),
+(4, '14:00', 1, TRUE), (4, '15:00', 1, TRUE), (4, '16:00', 1, TRUE), (4, '17:00', 1, TRUE), (4, '18:00', 1, TRUE);
 
