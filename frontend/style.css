@@ -1237,6 +1237,45 @@ input:checked + .slider:before {
     transform: translateX(18px);
 }
 
+/* Botão de Excluir Paciente (Lixeira) */
+.btn-delete-client {
+    position: absolute;
+    top: 12px;
+    left: 42px;
+    background: none;
+    border: none;
+    color: rgba(42, 49, 60, 0.25);
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s ease;
+    padding: 6px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.client-card:hover .btn-delete-client {
+    opacity: 1;
+    pointer-events: all;
+}
+
+.btn-delete-client:hover {
+    color: #ef4444;
+    background-color: rgba(239, 68, 68, 0.1);
+}
+
+@media (hover: none) {
+    .btn-delete-client {
+        opacity: 1;
+        pointer-events: all;
+        color: rgba(42, 49, 60, 0.45);
+    }
+}
+
 /* Botoes de Acao de Confirmacao / Cancelamento */
 .client-actions {
     display: flex;

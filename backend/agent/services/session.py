@@ -48,6 +48,11 @@ async def save_session(phone: str, session: dict):
     )
 
 
+async def delete_session(phone: str):
+    await redis_client.delete(f"{PREFIX}{phone}")
+
+
+
 async def add_to_history(session: dict, role: str, content: str) -> dict:
     session["history"].append({"role": role, "content": content})
     session["history"] = session["history"][-20:]

@@ -260,6 +260,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
+                <button class="btn-delete-client" title="Excluir Paciente"><i class="fa-solid fa-trash-can"></i></button>
                 ${statusBadgeHtml}
                 <div class="client-avatar-container">
                     <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar">
@@ -288,6 +289,43 @@ document.addEventListener("DOMContentLoaded", () => {
             checkbox.addEventListener("click", (e) => {
                 e.stopPropagation(); // Evita triggar o clique do card completo
                 toggleClientSelection(client.id, checkbox.checked);
+            });
+
+            // Clique na lixeira (Deletar Paciente)
+            const btnDeleteClient = card.querySelector(".btn-delete-client");
+            btnDeleteClient.addEventListener("click", async (e) => {
+                e.stopPropagation(); // Evita abrir wa.me ou alternar seleção do card
+                if (confirm(`Deseja realmente excluir o paciente "${client.name}"?`)) {
+                    btnDeleteClient.disabled = true;
+                    btnDeleteClient.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                    try {
+                        const response = await fetch(`/api/clients/${client.id}`, {
+                            method: "DELETE"
+                        });
+                        if (response.ok) {
+                            allClients = allClients.filter(c => c.id !== client.id);
+                            selectedClients.delete(client.id);
+                            
+                            // Remover qualquer notificação toast ativa desse cliente
+                            const activeToast = document.querySelector(`.toast-notification[data-client-id="${client.id}"]`);
+                            if (activeToast) {
+                                activeToast.classList.remove("show");
+                                setTimeout(() => activeToast.remove(), 400);
+                            }
+                            
+                            renderClients();
+                        } else {
+                            alert("Falha ao excluir o paciente.");
+                            btnDeleteClient.disabled = false;
+                            btnDeleteClient.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
+                        }
+                    } catch (error) {
+                        console.error("Erro ao deletar cliente:", error);
+                        alert("Erro de conexão com o servidor.");
+                        btnDeleteClient.disabled = false;
+                        btnDeleteClient.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
+                    }
+                }
             });
 
             // Clique no toggle da IA

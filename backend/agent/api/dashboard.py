@@ -1,12 +1,12 @@
 from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
 from backend.system.database import get_db
-from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb, ExamWeb
+from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb, ExamWeb, FollowupLogWeb
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
 from backend.agent.services.followup_scheduler import run_followup_check
@@ -178,16 +178,31 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
     if client.slot_date and client.slot:
         appointment_text = f"{client.slot_date.strftime('%d/%m/%Y')} às {client.slot.time_str}"
         
-    # Disparar mensagem de confirmacao estrita no WhatsApp
+    # Disparar mensagem de confirmacao estrita no WhatsApp (Resumo Final)
     confirm_msg = (
-        f"✅ *Consulta Confirmada!*\n\n"
-        f"Ola *{client.name}*, sua consulta de *{client.service}* foi confirmada com sucesso pelo(a) *{req.admin_name}*!\n"
-        f"📅 *Data/Hora:* {appointment_text}\n"
+        f"✅ *Resumo Final de Agendamento*\n\n"
+        f"Olá *{client.name}*, sua consulta foi confirmada com sucesso pelo(a) *{req.admin_name}*!\n\n"
+        f"👤 *Dados do Cliente:*\n"
+        f"• Nome: {client.name}\n"
     )
-    if client.upsell_success and client.upsell_service:
-        confirm_msg += f"➕ *Servico Adicional (Upsell):* {client.upsell_service}\n"
+    
+    if client.cpf:
+        confirm_msg += f"• CPF: {client.cpf}\n"
         
-    confirm_msg += "\nTe aguardamos na Clinica Lumina! Qualquer duvida, estamos a disposicao. 🦷😊"
+    confirm_msg += f"• Telefone: {client.phone}\n\n"
+    
+    confirm_msg += (
+        f"🦷 *Serviços Solicitados:*\n"
+        f"• Original: {client.service}\n"
+    )
+    
+    if client.upsell_success and client.upsell_service:
+        confirm_msg += f"• Acrescentado: {client.upsell_service}\n"
+        
+    confirm_msg += (
+        f"\n📅 *Data/Hora:* {appointment_text}\n\n"
+        f"Te aguardamos na Clínica Lúmina! Qualquer dúvida, estamos à disposição. 🦷😊"
+    )
     
     await whatsapp.send_message(client.phone, confirm_msg)
     return {"status": "confirmed", "client_id": client_id}
@@ -244,6 +259,29 @@ async def resolve_human(client_id: int, db: AsyncSession = Depends(get_db)):
     await db.commit()
     await db.refresh(client)
     return {"status": "ok", "client_id": client_id, "needs_human": False}
+
+
+@router.delete("/clients/{client_id}")
+async def delete_client(client_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClientWeb).where(ClientWeb.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
+        
+    # Deleta logs de follow-up do cliente
+    await db.execute(delete(FollowupLogWeb).where(FollowupLogWeb.client_id == client_id))
+    
+    # Deleta a sessão no Redis associada ao telefone do cliente
+    try:
+        await sess.delete_session(client.phone)
+    except Exception as e:
+        logger.error(f"Erro ao deletar sessao no Redis para {client.phone}: {e}")
+        
+    # Deleta o cliente
+    await db.delete(client)
+    await db.commit()
+    return {"status": "deleted", "id": client_id}
+
 
 
 # Endpoints de Administradores
