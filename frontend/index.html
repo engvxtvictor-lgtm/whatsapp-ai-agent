@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Lúmina - Painel de Controle</title>
+    <link rel="icon" type="image/png" href="/assets/favicon.png">
     <!-- Google Fonts: Outfit (headings) e Inter (body) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,7 +12,45 @@
     <!-- FontAwesome para ícones premium -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- CSS Customizado -->
-    <link rel="stylesheet" href="/frontend/style.css">
+    <link rel="stylesheet" href="/css/main.css">
+    <!-- Correções Visuais de Contraste (À Prova de Cache do Navegador) -->
+    <style>
+        .btn-secondary-outline {
+            background: none !important;
+            border: 1px solid rgba(197, 168, 128, 0.5) !important;
+            color: var(--gold-dark) !important;
+        }
+        .btn-secondary-outline:hover {
+            background: rgba(197, 168, 128, 0.08) !important;
+            border-color: var(--gold-primary) !important;
+            color: var(--gold-dark) !important;
+        }
+        .btn-delete-rule {
+            background: none !important;
+            border: none !important;
+            color: rgba(42, 49, 60, 0.45) !important;
+        }
+        .btn-delete-rule:hover {
+            color: #ef4444 !important;
+            background-color: rgba(239, 68, 68, 0.1) !important;
+        }
+        .toggle-pill {
+            background: rgba(42, 49, 60, 0.05) !important;
+            border: 1px solid rgba(197, 168, 128, 0.2) !important;
+            color: var(--charcoal-text) !important;
+        }
+        .toggle-pill:hover {
+            background: rgba(197, 168, 128, 0.08) !important;
+            color: var(--gold-dark) !important;
+            border-color: var(--gold-primary) !important;
+        }
+        .toggle-pill.active {
+            background: var(--gold-primary) !important;
+            color: #ffffff !important;
+            border-color: var(--gold-primary) !important;
+            box-shadow: 0 4px 10px rgba(197, 168, 128, 0.3) !important;
+        }
+    </style>
 </head>
 <body>
 
@@ -28,11 +67,11 @@
             <form class="login-form" id="login-form">
                 <div class="form-group">
                     <label for="login-email">E-mail</label>
-                    <input type="email" id="login-email" required placeholder="admin@lumina.com" value="admin@lumina.com">
+                    <input type="email" id="login-email" required placeholder="admin@lumina.com">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Senha</label>
-                    <input type="password" id="login-password" required placeholder="••••••••" value="admin123">
+                    <input type="password" id="login-password" required placeholder="••••••••">
                 </div>
                 <button type="submit" class="login-btn">Entrar no Painel</button>
                 <div class="login-error" id="login-error">E-mail ou senha incorretos. Tente novamente!</div>
@@ -100,7 +139,7 @@
                 <div class="header-right">
                     <!-- Logotipo da Clínica Lúmina -->
                     <div class="logo-container">
-                        <img src="/frontend/lumina-logo.jpg" alt="Lúmina Logo" class="lumina-logo">
+                        <img src="/assets/lumina-logo.jpg" alt="Lúmina Logo" class="lumina-logo">
                     </div>
                 </div>
             </header>
@@ -267,85 +306,127 @@
                         </div>
                     </div>
 
-                    <!-- Tabela de Slots -->
-                    <div class="exams-table-container">
-                        <table class="exams-table">
-                            <thead>
-                                <tr>
-                                    <th>Dia da Semana</th>
-                                    <th>Horário</th>
-                                    <th>Máximo de Pacientes</th>
-                                    <th>Status</th>
-                                    <th>Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody id="slots-table-body">
-                                <!-- Gerado Dinamicamente por app.js -->
-                            </tbody>
-                        </table>
+                    <!-- Grade de Horários -->
+                    <div class="schedule-grid-container" id="schedule-grid-container">
+                        <!-- Gerado Dinamicamente por schedule.js -->
                     </div>
                 </section>
 
-                <!-- ABA 3: CAMPANHAS & FOLLOW-UP -->
+                 <!-- ABA 3: CAMPANHAS & FOLLOW-UP -->
                 <section id="tab-campaigns" class="tab-panel">
                     <div class="campaigns-layout">
                         
-                        <!-- Painel Esquerdo: Envio de Campanhas -->
+                        <!-- Painel Esquerdo: Ações e Criação (Abas Locais) -->
                         <div class="campaign-card-panel">
-                            <div class="panel-header">
-                                <h3><i class="fa-solid fa-paper-plane gold-text"></i> Disparar Campanha Direcionada</h3>
-                                <p>Envie mensagens personalizadas de WhatsApp em massa para pacientes selecionados.</p>
+                            <div class="panel-toggle-header" style="display: flex; gap: 10px; margin-bottom: 25px; border-bottom: 1px solid rgba(197, 168, 128, 0.15); padding-bottom: 15px;">
+                                <button class="toggle-pill active" data-panel="instant" style="flex: 1; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; border: none; transition: all 0.3s ease;">
+                                    <i class="fa-solid fa-rocket"></i> Disparar na Hora
+                                </button>
+                                <button class="toggle-pill" data-panel="automation" style="flex: 1; padding: 10px; border-radius: 8px; font-weight: 600; font-size: 13px; cursor: pointer; border: none; transition: all 0.3s ease;">
+                                    <i class="fa-solid fa-clock"></i> Nova Automação (Follow-Up)
+                                </button>
                             </div>
 
-                            <div class="campaign-selection-status card-alert">
-                                <div class="alert-icon"><i class="fa-solid fa-circle-info gold-text"></i></div>
-                                <div class="alert-text">
-                                    <h4 id="campaign-selected-count-title">Nenhum cliente selecionado</h4>
-                                    <p id="campaign-selected-count-desc">Volte à aba "Clientes & Fila" e marque os pacientes que devem receber esta mensagem.</p>
+                            <!-- SUB-PAINEL 1: CAMPANHA INSTANTÂNEA -->
+                            <div id="sub-panel-instant" class="sub-panel">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-paper-plane gold-text"></i> Disparar Campanha Direcionada</h3>
+                                    <p>Envie mensagens personalizadas de WhatsApp em massa para pacientes selecionados.</p>
                                 </div>
-                            </div>
 
-                            <div class="form-group">
-                                <label>Modelos Rápidos de Mensagem</label>
-                                <div class="quick-templates">
-                                    <button class="template-pill" data-msg="Olá [NOME]! Identificamos que já faz 6 meses desde o seu último procedimento de [SERVIÇO]. Que tal agendarmos um retorno preventivo esta semana?">
-                                        Retorno de 6 meses
-                                    </button>
-                                    <button class="template-pill" data-msg="Olá [NOME]! Tudo bem? Estamos passando para confirmar sua consulta de acompanhamento de [SERVIÇO] amanhã às 14:00. Confirmado?">
-                                        Lembrete de Consulta
-                                    </button>
-                                    <button class="template-pill" data-msg="Olá [NOME]! A Clínica Lúmina está com novidades no setor de estética dental. Responda essa mensagem para garantir 10% de desconto no seu próximo clareamento!">
-                                        Promoção Estética
-                                    </button>
+                                <div class="campaign-selection-status card-alert">
+                                    <div class="alert-icon"><i class="fa-solid fa-circle-info gold-text"></i></div>
+                                    <div class="alert-text">
+                                        <h4 id="campaign-selected-count-title">Nenhum cliente selecionado</h4>
+                                        <p id="campaign-selected-count-desc">Volte à aba "Clientes & Fila" e marque os pacientes que devem receber esta mensagem.</p>
+                                    </div>
                                 </div>
+
+                                <div class="form-group">
+                                    <label>Modelos Rápidos de Mensagem</label>
+                                    <div class="quick-templates">
+                                        <button class="template-pill" data-msg="Olá [NOME]! Identificamos que já faz 6 meses desde o seu último procedimento de [SERVIÇO]. Que tal agendarmos um retorno preventivo esta semana?">
+                                            Retorno de 6 meses
+                                        </button>
+                                        <button class="template-pill" data-msg="Olá [NOME]! Tudo bem? Estamos passando para confirmar sua consulta de acompanhamento de [SERVIÇO] amanhã às 14:00. Confirmado?">
+                                            Lembrete de Consulta
+                                        </button>
+                                        <button class="template-pill" data-msg="Olá [NOME]! A Clínica Lúmina está com novidades no setor de estética dental. Responda essa mensagem para garantir 10% de desconto no seu próximo clareamento!">
+                                            Promoção Estética
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="campaign-message">Mensagem da Campanha</label>
+                                    <textarea id="campaign-message" rows="8" placeholder="Digite sua mensagem aqui... Use as tags [NOME] e [SERVIÇO] para personalização automática."></textarea>
+                                    <span class="input-tip">A tag [NOME] será substituída pelo nome do paciente e [SERVIÇO] pelo procedimento correspondente.</span>
+                                </div>
+
+                                <button class="btn btn-gold btn-block btn-lg" id="btn-submit-campaign" disabled>
+                                    <i class="fa-solid fa-rocket"></i> Disparar Campanha de WhatsApp
+                                </button>
                             </div>
 
-                            <div class="form-group">
-                                <label for="campaign-message">Mensagem da Campanha</label>
-                                <textarea id="campaign-message" rows="8" placeholder="Digite sua mensagem aqui... Use as tags [NOME] e [SERVIÇO] para personalização automática."></textarea>
-                                <span class="input-tip">A tag [NOME] será substituída pelo nome do paciente e [SERVIÇO] pelo procedimento correspondente.</span>
-                            </div>
+                            <!-- SUB-PAINEL 2: CRIAÇÃO DE AUTOMAÇÃO DE FOLLOW-UP -->
+                            <div id="sub-panel-automation" class="sub-panel" style="display: none;">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-clock gold-text"></i> Criar Automação de Follow-Up</h3>
+                                    <p>Configure regras automáticas de disparos recorrentes ou pós-tratamento no WhatsApp.</p>
+                                </div>
 
-                            <button class="btn btn-gold btn-block btn-lg" id="btn-submit-campaign" disabled>
-                                <i class="fa-solid fa-rocket"></i> Disparar Campanha de WhatsApp
-                            </button>
+                                <form id="form-inline-followup">
+                                    <div class="form-group">
+                                        <label for="inline-followup-name">Nome da Automação (Regra)</label>
+                                        <input type="text" id="inline-followup-name" required placeholder="Ex: Acompanhamento de Aparelho">
+                                    </div>
+                                    <div class="form-row" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 15px; margin-bottom: 15px;">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="inline-followup-service">Serviço / Procedimento Gatilho</label>
+                                            <select id="inline-followup-service" required>
+                                                <option value="">Selecione o serviço...</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="inline-followup-delay">Delay Inicial (dias)</label>
+                                            <input type="number" id="inline-followup-delay" required min="1" max="365" placeholder="Ex: 3">
+                                        </div>
+                                    </div>
+                                    <div class="form-row" style="display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 15px; margin-bottom: 15px;">
+                                        <div class="form-group" style="margin-bottom: 0;">
+                                            <label for="inline-followup-is-recurring">Tipo de Envio</label>
+                                            <select id="inline-followup-is-recurring">
+                                                <option value="false">Envio Único (Apenas uma vez)</option>
+                                                <option value="true">Recorrente (Enviar periodicamente)</option>
+                                            </select>
+                                        </div>
+                                        <div class="form-group" id="group-inline-recurrence" style="display: none; margin-bottom: 0;">
+                                            <label for="inline-followup-recurrence-interval">Repetir a cada (dias)</label>
+                                            <input type="number" id="inline-followup-recurrence-interval" min="1" max="365" value="7" placeholder="Ex: 7">
+                                        </div>
+                                    </div>
+                                    <div class="form-group">
+                                        <label for="inline-followup-template">Template da Mensagem</label>
+                                        <textarea id="inline-followup-template" rows="5" required placeholder="Ex: Olá [NOME]! Como está o seu novo aparelho? Queremos garantir seu total conforto..."></textarea>
+                                        <span class="input-tip">Utilize [NOME] e [SERVIÇO] para personalização dinâmica automática.</span>
+                                    </div>
+                                    
+                                    <button class="btn btn-gold btn-block btn-lg" type="submit" style="margin-top: 10px;">
+                                        <i class="fa-solid fa-plus"></i> Criar Automação
+                                    </button>
+                                </form>
+                            </div>
                         </div>
 
-                        <!-- Painel Direito: Regras de Follow-Up -->
+                        <!-- Painel Direito: Regras de Follow-Up Ativas -->
                         <div class="campaign-card-panel">
                             <div class="panel-header">
                                 <h3><i class="fa-solid fa-clock gold-text"></i> Automação de Follow-Up</h3>
-                                <p>Configure lembretes pós-tratamento baseados no tipo de serviço odontológico.</p>
+                                <p>Monitore e gerencie as automações e mensagens automáticas configuradas.</p>
                             </div>
-
                             <div class="follow-up-rules" id="follow-up-rules-container">
                                 <!-- Gerado Dinamicamente por app.js -->
                             </div>
-
-                            <button class="btn btn-secondary-outline btn-block" id="btn-add-followup-modal" style="margin-top: 15px;">
-                                <i class="fa-solid fa-plus"></i> Adicionar Nova Regra de Follow-Up
-                            </button>
-
                         </div>
 
                     </div>
@@ -491,8 +572,21 @@
                             </select>
                         </div>
                         <div class="form-group">
-                            <label for="followup-delay">Delay / Atraso (em dias)</label>
+                            <label for="followup-delay">Delay Inicial / Atraso (em dias)</label>
                             <input type="number" id="followup-delay" required min="1" max="365" placeholder="Ex: 3">
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="followup-is-recurring">Tipo de Envio</label>
+                            <select id="followup-is-recurring">
+                                <option value="false">Envio Único (Apenas uma vez)</option>
+                                <option value="true">Recorrente (Enviar periodicamente)</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="group-followup-recurrence" style="display: none;">
+                            <label for="followup-recurrence-interval">Repetir a cada (dias)</label>
+                            <input type="number" id="followup-recurrence-interval" min="1" max="365" value="7" placeholder="Ex: 7">
                         </div>
                     </div>
                     <div class="form-group">
@@ -600,6 +694,17 @@
     <div id="toast-container"></div>
 
     <!-- JS Customizado -->
-    <script src="/frontend/app.js"></script>
+    <script src="/js/config.js"></script>
+    <script src="/js/auth.js" defer></script>
+    <script src="/js/state.js" defer></script>
+    <script src="/js/nav.js" defer></script>
+    <script src="/js/clients.js" defer></script>
+    <script src="/js/admins.js" defer></script>
+    <script src="/js/campaigns.js" defer></script>
+    <script src="/js/modals.js" defer></script>
+    <script src="/js/followups.js" defer></script>
+    <script src="/js/exams.js" defer></script>
+    <script src="/js/schedule.js" defer></script>
+    <script src="/js/main.js" defer></script>
 </body>
 </html>

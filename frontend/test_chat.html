@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Chat de Teste — Clínica Lúmina IA</title>
+  <link rel="icon" type="image/png" href="/assets/favicon.png">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -166,10 +167,12 @@
     </div>
   </div>
 
+  <script src="/js/config.js"></script>
   <script>
     const messagesEl = document.getElementById("messages");
     const msgInput = document.getElementById("msg-input");
     const sendBtn = document.getElementById("send-btn");
+    let lastHistoryLength = -1;
 
     msgInput.addEventListener("keydown", e => {
       if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
@@ -184,6 +187,31 @@
       return div;
     }
 
+    async function loadHistory(forceRedraw = false) {
+      const phone = document.getElementById("phone-input").value.trim();
+      if (!phone) return;
+      try {
+        const res = await fetch(`${API_BASE}/test/chat/${phone}/history`);
+        if (res.ok) {
+          const data = await res.json();
+          const messages = data.messages || [];
+          if (forceRedraw || messages.length !== lastHistoryLength) {
+            messagesEl.innerHTML = `<div class="badge">Simule uma conversa de WhatsApp — as respostas vêm da IA real</div>`;
+            messages.forEach(m => {
+              const div = document.createElement("div");
+              div.className = `msg ${m.role}`;
+              div.textContent = m.text;
+              messagesEl.appendChild(div);
+            });
+            messagesEl.scrollTop = messagesEl.scrollHeight;
+            lastHistoryLength = messages.length;
+          }
+        }
+      } catch (e) {
+        console.error("Erro ao carregar histórico:", e);
+      }
+    }
+
     async function sendMessage() {
       const phone = document.getElementById("phone-input").value.trim();
       const text = msgInput.value.trim();
@@ -196,18 +224,15 @@
       const loading = addMsg("digitando...", "bot loading");
 
       try {
-        const res = await fetch("/test/chat", {
+        const res = await fetch(`${API_BASE}/test/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ phone, message: text })
         });
         const data = await res.json();
         loading.remove();
-        if (data.messages && data.messages.length > 0) {
-          data.messages.forEach(m => addMsg(m, "bot"));
-        } else {
-          addMsg("(sem resposta)", "bot");
-        }
+        
+        await loadHistory(true);
       } catch (e) {
         loading.remove();
         addMsg("Erro ao conectar com o backend.", "bot");
@@ -219,9 +244,23 @@
 
     async function clearChat() {
       const phone = document.getElementById("phone-input").value.trim();
-      await fetch(`/test/session/${phone}`, { method: "DELETE" }).catch(() => {});
+      await fetch(`${API_BASE}/test/session/${phone}`, { method: "DELETE" }).catch(() => {});
       messagesEl.innerHTML = `<div class="badge">Sessão limpa — nova conversa iniciada</div>`;
+      lastHistoryLength = 0;
     }
+
+    // Monitora mudança no número de telefone para carregar o histórico correspondente
+    document.getElementById("phone-input").addEventListener("change", () => {
+      loadHistory(true);
+    });
+
+    // Inicialização
+    loadHistory(true);
+
+    // Polling a cada 2 segundos
+    setInterval(() => {
+      loadHistory(false);
+    }, 2000);
   </script>
 </body>
 </html>

@@ -1,0 +1,47 @@
+/* CSS Customizado - Clínica Lúmina */
+
+:root {
+    /* Cores Premium Lúmina */
+    --gold-primary: #C5A880;     /* Dourado Champanhe */
+    --gold-hover: #D4AF37;       /* Dourado Metálico */
+    --gold-dark: #A58B63;        /* Dourado Escuro */
+    
+    --bg-mineral: linear-gradient(135deg, #f5f5f7 0%, #e3e3e5 100%); /* Fundo Mármore Mineral */
+    --bg-card: rgba(255, 255, 255, 0.85); /* Vidro Branco */
+    --border-gold-soft: rgba(197, 168, 128, 0.25);
+    
+    --charcoal-dark: #12151a;    /* Cinza-Escuro Pedra */
+    --charcoal-light: #1c2027;   /* Cinza-Claro Sidebar */
+    --charcoal-text: #2a313c;   
+    
+    --whatsapp-green: #25D366;
+    --instagram-grad: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+    
+    --font-heading: 'Outfit', sans-serif;
+    --font-body: 'Inter', sans-serif;
+    
+    --shadow-soft: 0 8px 30px rgba(0, 0, 0, 0.05);
+    --shadow-hover: 0 12px 35px rgba(197, 168, 128, 0.15);
+    --shadow-sidebar: 4px 0 25px rgba(0, 0, 0, 0.08);
+}
+
+/* Reset e Estrutura Básica */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: var(--font-body);
+    background: var(--bg-mineral);
+    color: var(--charcoal-text);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.app-container {
+    display: flex;
+    min-height: 100vh;
+}
+

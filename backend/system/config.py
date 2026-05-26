@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     BACKEND_PUBLIC_URL: str = "http://localhost:8000"
     SERVICES_PDF_FILENAME: str = "lumina_nossos_servicos.pdf"
 
+    # JWT settings
+    JWT_SECRET_KEY: str = "supersecretkeychange_me"
+    JWT_ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
+
     class Config:
         env_file = ".env"
 

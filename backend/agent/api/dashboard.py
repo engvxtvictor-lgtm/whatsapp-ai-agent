@@ -6,13 +6,29 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
 from backend.system.database import get_db
-from backend.system.models.web_models import ClientWeb, AdminWeb, FollowupWeb, ExamWeb, FollowupLogWeb
+from backend.system.dependencies import get_current_admin
+from backend.system.models.web_models import AdminWeb, ClientWeb, ExamWeb, FollowupWeb, FollowupLogWeb, ScheduleSlotWeb
+
+class AdminSchema(BaseModel):
+    id: Optional[int] = None
+    name: str
+    email: str
+    role: str
+    avatar: Optional[str] = None
+    
+    class Config:
+        from_attributes = True
+router = APIRouter(prefix="/api")
+
+
+
+
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
 from backend.agent.services.followup_scheduler import run_followup_check
 from backend.system.logger import logger
 
-router = APIRouter(prefix="/api")
+
 
 
 # Pydantic Schemas
@@ -342,6 +358,16 @@ async def dispatch_campaign_messages(clients: List[ClientWeb], template: str):
     logger.info(f"Campanha encerrada. Sucesso: {success_count}/{len(clients)}")
 
 
+class FollowupClientSummarySchema(BaseModel):
+    id: int
+    name: str
+    phone: str
+    status: str
+    appointment_date: Optional[str] = None
+    sent_status: str
+    sent_at: Optional[str] = None
+
+
 class FollowupSchema(BaseModel):
     id: Optional[int] = None
     name: str
@@ -349,17 +375,88 @@ class FollowupSchema(BaseModel):
     delay_days: int
     message_template: str
     is_active: bool = True
+    is_recurring: bool = False
+    recurrence_interval: Optional[int] = 0
+    affected_clients: List[FollowupClientSummarySchema] = []
 
     class Config:
         from_attributes = True
 
 
+async def get_followups_with_affected(db: AsyncSession, followup_id: Optional[int] = None):
+    # Busca regras
+    if followup_id:
+        query = select(FollowupWeb).where(FollowupWeb.id == followup_id)
+    else:
+        query = select(FollowupWeb).order_by(FollowupWeb.id.asc())
+        
+    result = await db.execute(query)
+    followups = result.scalars().all()
+
+    # Busca clientes confirmados
+    client_res = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.status == "confirmed")
+    )
+    clients = client_res.scalars().all()
+
+    # Busca logs de follow-up
+    log_res = await db.execute(select(FollowupLogWeb))
+    logs = log_res.scalars().all()
+    logs_map = {(log.client_id, log.followup_id): log.sent_at for log in logs}
+
+    response_data = []
+    for f in followups:
+        affected = []
+        for c in clients:
+            # Match lógico idêntico ao do scheduler
+            service_match = (
+                f.service.lower() in c.service.lower()
+                or c.service.lower() in f.service.lower()
+            )
+            if service_match:
+                sent_at = logs_map.get((c.id, f.id))
+                sent_status = "Enviado" if sent_at else "Pendente"
+                
+                # Formata data da consulta
+                appointment_text = c.appointment_date
+                if c.slot_date and c.slot:
+                    appointment_text = f"{c.slot_date.strftime('%d/%m/%Y')} às {c.slot.time_str}"
+
+                affected.append(
+                    FollowupClientSummarySchema(
+                        id=c.id,
+                        name=c.name,
+                        phone=c.phone,
+                        status=c.status,
+                        appointment_date=appointment_text,
+                        sent_status=sent_status,
+                        sent_at=sent_at.strftime('%d/%m/%Y %H:%M') if sent_at else None
+                    )
+                )
+        
+        response_data.append(
+            FollowupSchema(
+                id=f.id,
+                name=f.name,
+                service=f.service,
+                delay_days=f.delay_days,
+                message_template=f.message_template,
+                is_active=f.is_active,
+                is_recurring=f.is_recurring,
+                recurrence_interval=f.recurrence_interval,
+                affected_clients=affected
+            )
+        )
+        
+    if followup_id:
+        return response_data[0] if response_data else None
+    return response_data
+
+
 # Endpoints de Follow-Up
 @router.get("/followups", response_model=List[FollowupSchema])
 async def get_followups(db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(FollowupWeb).order_by(FollowupWeb.id.asc()))
-    followups = result.scalars().all()
-    return followups
+    return await get_followups_with_affected(db)
 
 
 @router.post("/followups", response_model=FollowupSchema)
@@ -369,15 +466,16 @@ async def create_followup(data: FollowupSchema, db: AsyncSession = Depends(get_d
         service=data.service,
         delay_days=data.delay_days,
         message_template=data.message_template,
-        is_active=data.is_active
+        is_active=data.is_active,
+        is_recurring=data.is_recurring,
+        recurrence_interval=data.recurrence_interval
     )
     db.add(new_followup)
     await db.commit()
-    await db.refresh(new_followup)
-    return new_followup
+    return await get_followups_with_affected(db, new_followup.id)
 
 
-@router.put("/followups/{followup_id}/toggle")
+@router.put("/followups/{followup_id}/toggle", response_model=FollowupSchema)
 async def toggle_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(FollowupWeb).where(FollowupWeb.id == followup_id))
     followup = result.scalars().first()
@@ -386,8 +484,7 @@ async def toggle_followup(followup_id: int, db: AsyncSession = Depends(get_db)):
     
     followup.is_active = not followup.is_active
     await db.commit()
-    await db.refresh(followup)
-    return {"status": "ok", "id": followup_id, "is_active": followup.is_active}
+    return await get_followups_with_affected(db, followup_id)
 
 
 @router.delete("/followups/{followup_id}")
@@ -467,3 +564,92 @@ async def delete_exam(exam_id: int, db: AsyncSession = Depends(get_db)):
     return {"status": "deleted", "id": exam_id}
 
 
+
+# ── Endpoints de Slots (Agenda / Horários) ──────────────────────────────
+
+class ClientSummarySchema(BaseModel):
+    id: int
+    name: str
+    phone: str
+    status: str
+
+    class Config:
+        from_attributes = True
+
+
+class SlotSchema(BaseModel):
+    id: Optional[int] = None
+    weekday: int
+    time_str: str
+    max_patients: int = 1
+    is_active: bool = True
+    clients: List[ClientSummarySchema] = []
+
+    class Config:
+        from_attributes = True
+
+
+@router.get("/slots", response_model=List[SlotSchema])
+async def get_slots(db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScheduleSlotWeb)
+        .options(selectinload(ScheduleSlotWeb.clients))
+        .order_by(ScheduleSlotWeb.weekday, ScheduleSlotWeb.time_str)
+    )
+    slots = result.scalars().all()
+    return slots
+
+
+@router.post("/slots", response_model=SlotSchema)
+async def create_slot(data: SlotSchema, db: AsyncSession = Depends(get_db)):
+    new_slot = ScheduleSlotWeb(
+        weekday=data.weekday,
+        time_str=data.time_str,
+        max_patients=data.max_patients,
+        is_active=data.is_active
+    )
+    db.add(new_slot)
+    await db.commit()
+    
+    # Reload with clients relationship loaded
+    result = await db.execute(
+        select(ScheduleSlotWeb)
+        .options(selectinload(ScheduleSlotWeb.clients))
+        .where(ScheduleSlotWeb.id == new_slot.id)
+    )
+    slot_loaded = result.scalars().first()
+    return slot_loaded
+
+
+@router.put("/slots/{slot_id}/toggle", response_model=SlotSchema)
+async def toggle_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ScheduleSlotWeb)
+        .options(selectinload(ScheduleSlotWeb.clients))
+        .where(ScheduleSlotWeb.id == slot_id)
+    )
+    slot = result.scalars().first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Horário não encontrado.")
+    slot.is_active = not slot.is_active
+    await db.commit()
+    
+    # Reload with clients relationship loaded
+    result = await db.execute(
+        select(ScheduleSlotWeb)
+        .options(selectinload(ScheduleSlotWeb.clients))
+        .where(ScheduleSlotWeb.id == slot_id)
+    )
+    slot_loaded = result.scalars().first()
+    return slot_loaded
+
+
+@router.delete("/slots/{slot_id}")
+async def delete_slot(slot_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
+    slot = result.scalars().first()
+    if not slot:
+        raise HTTPException(status_code=404, detail="Horário não encontrado.")
+    await db.delete(slot)
+    await db.commit()
+    return {"status": "deleted", "id": slot_id}

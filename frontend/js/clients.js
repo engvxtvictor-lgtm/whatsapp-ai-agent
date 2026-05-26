@@ -1,0 +1,362 @@
+// 2. BUSCAR E FILTRAR PACIENTES (CLIENTES)
+    function renderClients() {
+        const query = clientSearchInput.value.toLowerCase().trim();
+        const serviceFilter = filterServiceSelect.value;
+        const sourceFilter = filterSourceSelect.value;
+
+        // Filtra a lista
+        const filtered = allClients.filter(client => {
+            const matchesSearch = client.name.toLowerCase().includes(query) ||
+                                  client.cpf.includes(query) ||
+                                  client.phone.includes(query);
+            const matchesService = serviceFilter === "" || client.service === serviceFilter;
+            const matchesSource = sourceFilter === "" || client.source === sourceFilter;
+
+            return matchesSearch && matchesService && matchesSource;
+        });
+
+        // Limpa grid
+        clientsGrid.innerHTML = "";
+
+        if (filtered.length === 0) {
+            clientsGrid.innerHTML = `
+                <div class="empty-state" style="grid-column: 1 / -1; padding: 50px; text-align: center; background: rgba(255,255,255,0.5); border-radius: 12px; border: 1px dashed var(--border-gold-soft);">
+                    <i class="fa-solid fa-folder-open" style="font-size: 40px; color: var(--gold-primary); margin-bottom: 15px;"></i>
+                    <p style="font-weight: 500; color: var(--charcoal-text)">Nenhum paciente encontrado para os filtros ativos.</p>
+                </div>
+            `;
+            return;
+        }
+
+        // Renderiza cada card
+        filtered.forEach(client => {
+            const isSelected = selectedClients.has(client.id);
+
+            const card = document.createElement("div");
+            card.className = `client-card ${isSelected ? 'selected' : ''} ${client.needs_human ? 'needs-human' : ''}`;
+            card.setAttribute("data-id", client.id);
+
+            // Determina Ícone e Cor do Canal
+            const isWA = client.source === "whatsapp";
+            const channelBadgeClass = isWA ? "badge-wa" : "badge-ig";
+            const channelIcon = isWA ? "fa-brands fa-whatsapp" : "fa-brands fa-instagram";
+            const channelLabel = isWA ? "WhatsApp" : "Instagram";
+
+            const upsellBadge = client.upsell_success 
+                ? `<span class="badge badge-upsell"><i class="fa-solid fa-star"></i> Upsell: ${client.upsell_service || 'Sim'}</span>`
+                : `<span class="badge badge-no-upsell">Sem Upsell</span>`;
+
+            let appointmentText = client.appointment_date;
+            if (client.slot_date) {
+                const parts = client.slot_date.split("-");
+                if (parts.length === 3) {
+                    const dateFormatted = `${parts[2]}/${parts[1]}/${parts[0]}`;
+                    const timeText = client.slot_time || "";
+                    appointmentText = `${dateFormatted}${timeText ? ' às ' + timeText : ''}`;
+                }
+            }
+            const appointmentBadge = appointmentText
+                ? `<div class="client-appointment-badge"><i class="fa-regular fa-calendar-check"></i> ${appointmentText}</div>`
+                : `<div class="client-appointment-badge" style="color: #c5a880; border-color: rgba(197,168,128,0.2);"><i class="fa-regular fa-calendar-times"></i> Sem agendamento</div>`;
+
+            const statusLabels = {
+                pending: "Pendente",
+                confirmed: "Confirmado",
+                cancelled: "Recusado"
+            };
+            const statusClass = `status-${client.status || 'pending'}`;
+            const statusLabel = statusLabels[client.status || 'pending'] || "Pendente";
+            const statusBadgeHtml = `<span class="client-status-badge ${statusClass}">${statusLabel}</span>`;
+
+            let actionsHtml = "";
+            if ((client.status || "pending") === "pending" && client.appointment_date) {
+                actionsHtml = `
+                    <div class="client-actions">
+                        <button class="btn-action-confirm" title="Confirmar Agendamento"><i class="fa-solid fa-check"></i> Aceitar</button>
+                        <button class="btn-action-cancel" title="Recusar Agendamento"><i class="fa-solid fa-xmark"></i> Recusar</button>
+                    </div>
+                `;
+            }
+
+            const iaToggleHtml = `
+                <div class="client-ia-toggle">
+                    <span class="toggle-label"><i class="fa-solid fa-robot"></i> IA Comercial</span>
+                    <label class="switch">
+                        <input type="checkbox" class="ia-toggle-checkbox" ${client.ai_active ? 'checked' : ''}>
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+
+            // Category badge
+            const categoryBadgeHtml = client.exam_category
+                ? `<span class="badge-category ${getCategoryClass(client.exam_category)}">
+                       <i class="fa-solid fa-tag"></i> ${client.exam_category}
+                   </span>`
+                : '';
+
+            card.innerHTML = `
+                <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
+                <button class="btn-delete-client" title="Excluir Paciente"><i class="fa-solid fa-trash-can"></i></button>
+                ${statusBadgeHtml}
+                <div class="client-avatar-container">
+                    <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar">
+                </div>
+                <h4 class="client-name">${client.name}</h4>
+                <p class="client-meta"><strong>CPF:</strong> ${client.cpf}</p>
+                <p class="client-meta"><strong>Tel:</strong> ${client.phone}</p>
+                
+                <div class="client-badges">
+                    <span class="badge ${channelBadgeClass}">
+                        <i class="${channelIcon}"></i> ${channelLabel}
+                    </span>
+                    <span class="badge badge-service">
+                        ${client.service}
+                    </span>
+                    ${categoryBadgeHtml}
+                    ${upsellBadge}
+                </div>
+                ${appointmentBadge}
+                ${actionsHtml}
+                ${iaToggleHtml}
+            `;
+
+            // Clique no Checkbox
+            const checkbox = card.querySelector(".client-card-select");
+            checkbox.addEventListener("click", (e) => {
+                e.stopPropagation(); // Evita triggar o clique do card completo
+                toggleClientSelection(client.id, checkbox.checked);
+            });
+
+            // Clique na lixeira (Deletar Paciente)
+            const btnDeleteClient = card.querySelector(".btn-delete-client");
+            btnDeleteClient.addEventListener("click", async (e) => {
+                e.stopPropagation(); // Evita abrir wa.me ou alternar seleção do card
+                if (confirm(`Deseja realmente excluir o paciente "${client.name}"?`)) {
+                    btnDeleteClient.disabled = true;
+                    btnDeleteClient.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
+                    try {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}`, {
+                            method: "DELETE"
+                        });
+                        if (response.ok) {
+                            allClients = allClients.filter(c => c.id !== client.id);
+                            selectedClients.delete(client.id);
+                            
+                            // Remover qualquer notificação toast ativa desse cliente
+                            const activeToast = document.querySelector(`.toast-notification[data-client-id="${client.id}"]`);
+                            if (activeToast) {
+                                activeToast.classList.remove("show");
+                                setTimeout(() => activeToast.remove(), 400);
+                            }
+                            
+                            renderClients();
+                        } else {
+                            alert("Falha ao excluir o paciente.");
+                            btnDeleteClient.disabled = false;
+                            btnDeleteClient.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
+                        }
+                    } catch (error) {
+                        console.error("Erro ao deletar cliente:", error);
+                        alert("Erro de conexão com o servidor.");
+                        btnDeleteClient.disabled = false;
+                        btnDeleteClient.innerHTML = `<i class="fa-solid fa-trash-can"></i>`;
+                    }
+                }
+            });
+
+            // Clique no toggle da IA
+            const iaCheckbox = card.querySelector(".ia-toggle-checkbox");
+            iaCheckbox.addEventListener("click", async (e) => {
+                e.stopPropagation(); // Evita selecionar o card
+                const checked = iaCheckbox.checked;
+                try {
+                    const response = await fetch(`${API_BASE}/api/sessions/${client.phone}/toggle-ai`, {
+                        method: "PUT"
+                    });
+                    if (response.ok) {
+                        const data = await response.json();
+                        client.ai_active = data.ai_active;
+                    } else {
+                        iaCheckbox.checked = !checked;
+                        alert("Falha ao alternar status da IA Comercial.");
+                    }
+                } catch (error) {
+                    console.error("Erro toggle AI:", error);
+                    iaCheckbox.checked = !checked;
+                    alert("Erro de conexao com o servidor.");
+                }
+            });
+
+            // Acoes de confirmar/recusar agendamento
+            if ((client.status || "pending") === "pending" && client.appointment_date) {
+                const btnConfirm = card.querySelector(".btn-action-confirm");
+                const btnCancel = card.querySelector(".btn-action-cancel");
+
+                btnConfirm.addEventListener("click", async (e) => {
+                    e.stopPropagation(); // Evita selecionar o card
+                    const loggedAdminName = "Dra. Ana Souza"; // admin padrao
+                    btnConfirm.disabled = true;
+                    btnConfirm.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Aceitando...`;
+
+                    try {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}/confirm`, {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ admin_name: loggedAdminName })
+                        });
+                        if (response.ok) {
+                            client.status = "confirmed";
+                            loadData(); // Recarrega lista
+                        } else {
+                            alert("Falha ao confirmar consulta.");
+                            btnConfirm.disabled = false;
+                            btnConfirm.innerHTML = `<i class="fa-solid fa-check"></i> Aceitar`;
+                        }
+                    } catch (error) {
+                        console.error("Erro confirmar consulta:", error);
+                        alert("Erro de conexao com o servidor.");
+                        btnConfirm.disabled = false;
+                        btnConfirm.innerHTML = `<i class="fa-solid fa-check"></i> Aceitar`;
+                    }
+                });
+
+                btnCancel.addEventListener("click", async (e) => {
+                    e.stopPropagation(); // Evita selecionar o card
+                    btnCancel.disabled = true;
+                    btnCancel.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Recusando...`;
+
+                    try {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}/cancel`, {
+                            method: "PUT"
+                        });
+                        if (response.ok) {
+                            client.status = "cancelled";
+                            loadData(); // Recarrega lista
+                        } else {
+                            alert("Falha ao recusar consulta.");
+                            btnCancel.disabled = false;
+                            btnCancel.innerHTML = `<i class="fa-solid fa-xmark"></i> Recusar`;
+                        }
+                    } catch (error) {
+                        console.error("Erro recusar consulta:", error);
+                        alert("Erro de conexao com o servidor.");
+                        btnCancel.disabled = false;
+                        btnCancel.innerHTML = `<i class="fa-solid fa-xmark"></i> Recusar`;
+                    }
+                });
+            }
+
+            // Clique no Card completo (alterna selecao ou abre wa.me se precisar de suporte)
+            card.addEventListener("click", async (e) => {
+                if (e.target.closest('.client-ia-toggle') || e.target.closest('.client-actions') || e.target.closest('.client-card-select')) {
+                    return;
+                }
+                
+                if (client.needs_human) {
+                    // Open wa.me link directly
+                    window.open(`https://wa.me/${client.phone}`, "_blank");
+                    
+                    // Resolve needs_human on the backend
+                    try {
+                        const res = await fetch(`${API_BASE}/api/clients/${client.id}/resolve-human`, {
+                            method: "PUT"
+                        });
+                        if (res.ok) {
+                            client.needs_human = false;
+                            activeHumanRequests.delete(client.id);
+                            renderClients(); // Re-render to update classes and badges
+                        }
+                    } catch (err) {
+                        console.error("Erro ao resolver suporte humano:", err);
+                    }
+                    return;
+                }
+
+                const newStatus = !selectedClients.has(client.id);
+                checkbox.checked = newStatus;
+                toggleClientSelection(client.id, newStatus);
+            });
+
+            clientsGrid.appendChild(card);
+        });
+
+        updateMetrics();
+    }
+
+    function toggleClientSelection(id, select) {
+        const card = document.querySelector(`.client-card[data-id="${id}"]`);
+        if (select) {
+            selectedClients.add(id);
+            if (card) card.classList.add("selected");
+        } else {
+            selectedClients.delete(id);
+            if (card) card.classList.remove("selected");
+        }
+        updateMetrics();
+        updateBatchActionBar();
+    }
+
+    // 3. SELEÇÃO EM LOTE E ATUALIZAÇÃO DE MÉTRICAS
+    function updateMetrics() {
+        metricTotalClients.innerText = allClients.length;
+        metricWaClients.innerText = allClients.filter(c => c.source === "whatsapp").length;
+        metricIgClients.innerText = allClients.filter(c => c.source === "instagram").length;
+        metricSelectedClients.innerText = selectedClients.size;
+    }
+
+    function updateBatchActionBar() {
+        if (selectedClients.size > 0) {
+            batchSelectionText.innerText = `${selectedClients.size} paciente(s) selecionado(s)`;
+            batchActionBar.style.display = "flex";
+        } else {
+            batchActionBar.style.display = "none";
+        }
+    }
+
+    btnSelectAll.addEventListener("click", () => {
+        // Seleciona todos os atualmente visíveis/filtrados
+        const query = clientSearchInput.value.toLowerCase().trim();
+        const serviceFilter = filterServiceSelect.value;
+        const sourceFilter = filterSourceSelect.value;
+
+        allClients.forEach(client => {
+            const matchesSearch = client.name.toLowerCase().includes(query) ||
+                                  client.cpf.includes(query) ||
+                                  client.phone.includes(query);
+            const matchesService = serviceFilter === "" || client.service === serviceFilter;
+            const matchesSource = sourceFilter === "" || client.source === sourceFilter;
+
+            if (matchesSearch && matchesService && matchesSource) {
+                selectedClients.add(client.id);
+                const card = document.querySelector(`.client-card[data-id="${client.id}"]`);
+                if (card) {
+                    card.classList.add("selected");
+                    card.querySelector(".client-card-select").checked = true;
+                }
+            }
+        });
+        updateMetrics();
+        updateBatchActionBar();
+    });
+
+    btnClearSelection.addEventListener("click", () => {
+        selectedClients.clear();
+        document.querySelectorAll(".client-card").forEach(card => {
+            card.classList.remove("selected");
+            card.querySelector(".client-card-select").checked = false;
+        });
+        updateMetrics();
+        updateBatchActionBar();
+    });
+
+    // Direciona da seleção para a aba de Campanhas
+    btnSendCampaignFromSelection.addEventListener("click", () => {
+        const itemCampaign = document.querySelector('.nav-item[data-tab="campaigns"]');
+        if (itemCampaign) itemCampaign.click();
+    });
+
+    // Escuta filtros
+    clientSearchInput.addEventListener("input", renderClients);
+    filterServiceSelect.addEventListener("change", renderClients);
+    filterSourceSelect.addEventListener("change", renderClients);

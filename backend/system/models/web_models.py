@@ -37,7 +37,8 @@ class AdminWeb(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    email: Mapped[str] = mapped_column(String(100), nullable=False)
+    email: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)  # BCrypt hash of password
     role: Mapped[str] = mapped_column(String(50), nullable=False)        # Administrador, Atendente, Dentista, etc.
     avatar: Mapped[str] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
@@ -62,6 +63,8 @@ class FollowupWeb(Base):
     delay_days: Mapped[int] = mapped_column(nullable=False)              # Dias decorridos após a consulta (ex: 180)
     message_template: Mapped[str] = mapped_column(String(500), nullable=False) # Template da mensagem com placeholders
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False) # Status de atividade
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se repete periodicamente
+    recurrence_interval: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0) # Intervalo em dias
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

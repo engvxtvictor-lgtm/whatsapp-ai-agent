@@ -1,0 +1,157 @@
+/* 6. Control Bar e Filtros */
+.control-bar {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-gold-soft);
+    border-radius: 12px;
+    padding: 15px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 20px;
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 25px;
+}
+
+.search-box {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    background: rgba(0, 0, 0, 0.03);
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 8px;
+    padding: 10px 15px;
+    flex-grow: 1;
+    max-width: 400px;
+    transition: all 0.3s ease;
+}
+
+.search-box:focus-within {
+    background: #ffffff;
+    border-color: var(--gold-primary);
+    box-shadow: 0 0 8px rgba(197, 168, 128, 0.2);
+}
+
+.search-box i {
+    color: rgba(42, 49, 60, 0.4);
+}
+
+.search-box input {
+    background: none;
+    border: none;
+    outline: none;
+    width: 100%;
+    font-family: var(--font-body);
+    font-size: 14px;
+    color: var(--charcoal-text);
+}
+
+.filters-box {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+}
+
+.filter-select {
+    padding: 10px 15px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    background: #ffffff;
+    font-family: var(--font-body);
+    font-size: 14px;
+    outline: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.filter-select:focus {
+    border-color: var(--gold-primary);
+}
+
+/* Batch Action Bar */
+.batch-action-bar {
+    background: linear-gradient(135deg, var(--charcoal-dark) 0%, var(--charcoal-light) 100%);
+    color: #ffffff;
+    border-radius: 8px;
+    padding: 12px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    animation: slideDown 0.3s ease forwards;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.batch-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+/* 7. Botões */
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 20px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    font-weight: 500;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.btn-xs {
+    padding: 6px 12px;
+    font-size: 12px;
+    border-radius: 6px;
+}
+
+.btn-gold {
+    background: linear-gradient(135deg, var(--gold-primary) 0%, var(--gold-dark) 100%);
+    color: #ffffff;
+    box-shadow: 0 4px 15px rgba(197, 168, 128, 0.3);
+}
+
+.btn-gold:hover:not(:disabled) {
+    background: linear-gradient(135deg, var(--gold-hover) 0%, var(--gold-primary) 100%);
+    box-shadow: 0 6px 20px rgba(197, 168, 128, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-gold:disabled {
+    background: #cccccc;
+    color: #888888;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.btn-secondary-outline {
+    background: none;
+    border: 1px solid rgba(197, 168, 128, 0.4);
+    color: var(--gold-dark);
+}
+
+.btn-secondary-outline:hover {
+    background: rgba(197, 168, 128, 0.08);
+    border-color: var(--gold-primary);
+    color: var(--gold-dark);
+}
+
+.btn-block {
+    width: 100%;
+}
+
+.btn-lg {
+    padding: 14px 28px;
+    font-size: 16px;
+    font-weight: 600;
+}
+

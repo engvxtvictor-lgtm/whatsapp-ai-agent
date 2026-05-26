@@ -3,6 +3,15 @@ from backend.system.config import settings
 from backend.system.logger import logger
 
 async def send_message(phone: str, text: str) -> bool:
+    if phone != settings.HUMAN_PHONE:
+        try:
+            from backend.agent.services import session as sess
+            session = await sess.get_session(phone)
+            session = await sess.add_to_history(session, "assistant", text)
+            await sess.save_session(phone, session)
+        except Exception as e:
+            logger.error(f"Erro ao salvar mensagem no historico do Redis: {e}")
+
     async with httpx.AsyncClient(timeout=10) as client:
         try:
             url = f"{settings.WHATSAPP_API_URL}/send"
@@ -16,6 +25,15 @@ async def send_message(phone: str, text: str) -> bool:
 
 async def send_document(phone: str, pdf_url: str, filename: str = "tabela_servicos.pdf", caption: str = "") -> bool:
     """Envia um documento PDF via WhatsApp."""
+    if phone != settings.HUMAN_PHONE:
+        try:
+            from backend.agent.services import session as sess
+            session = await sess.get_session(phone)
+            session = await sess.add_to_history(session, "assistant", f"[📎 Documento Anexado: {filename}]\n{caption}")
+            await sess.save_session(phone, session)
+        except Exception as e:
+            logger.error(f"Erro ao salvar documento no historico do Redis: {e}")
+
     async with httpx.AsyncClient(timeout=30) as client:
         try:
             url = f"{settings.WHATSAPP_API_URL}/send-document"

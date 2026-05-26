@@ -1,0 +1,230 @@
+/* 10. Campanhas Layout Split */
+.campaigns-layout {
+    display: grid;
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 30px;
+    align-items: start;
+}
+
+.campaign-card-panel {
+    background: var(--bg-card);
+    border: 1px solid var(--border-gold-soft);
+    border-radius: 16px;
+    padding: 30px;
+    box-shadow: var(--shadow-soft);
+}
+
+.panel-header {
+    margin-bottom: 25px;
+}
+
+.panel-header h3 {
+    font-family: var(--font-heading);
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+    margin-bottom: 6px;
+}
+
+.panel-header p {
+    font-size: 13px;
+    color: rgba(42, 49, 60, 0.6);
+}
+
+.gold-text { color: var(--gold-primary); }
+
+.card-alert {
+    background: rgba(197, 168, 128, 0.08);
+    border: 1px solid rgba(197, 168, 128, 0.3);
+    border-radius: 10px;
+    padding: 15px;
+    display: flex;
+    gap: 15px;
+    margin-bottom: 25px;
+}
+
+.alert-icon i {
+    font-size: 18px;
+}
+
+.alert-text h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+    margin-bottom: 4px;
+}
+
+.alert-text p {
+    font-size: 12px;
+    color: rgba(42, 49, 60, 0.7);
+}
+
+/* Form Groups */
+.form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+}
+
+.quick-templates {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.template-pill {
+    padding: 6px 12px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 20px;
+    background-color: #ffffff;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.template-pill:hover {
+    border-color: var(--gold-primary);
+    color: var(--gold-dark);
+    background-color: rgba(197, 168, 128, 0.05);
+}
+
+textarea, select, input[type="text"], input[type="email"] {
+    padding: 12px 15px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    border-radius: 8px;
+    font-family: var(--font-body);
+    font-size: 14px;
+    outline: none;
+    transition: all 0.3s ease;
+}
+
+textarea:focus, select:focus, input[type="text"]:focus, input[type="email"]:focus {
+    border-color: var(--gold-primary);
+    box-shadow: 0 0 8px rgba(197, 168, 128, 0.2);
+}
+
+.input-tip {
+    font-size: 11px;
+    color: rgba(42, 49, 60, 0.5);
+}
+
+/* Regras de Follow Up */
+.follow-up-rules {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.follow-up-card {
+    background: #ffffff;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 10px;
+    padding: 18px;
+}
+
+.rule-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.rule-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.rule-title h4 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+}
+
+.service-tag {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--gold-dark);
+    border: 1px solid var(--gold-primary);
+    padding: 2px 8px;
+    border-radius: 20px;
+}
+
+.rule-description {
+    font-size: 12px;
+    color: rgba(42, 49, 60, 0.6);
+    margin-bottom: 12px;
+}
+
+.rule-footer {
+    font-size: 11px;
+    color: rgba(42, 49, 60, 0.5);
+    background-color: rgba(0, 0, 0, 0.02);
+    padding: 6px 10px;
+    border-radius: 6px;
+}
+
+/* Toggle Switch */
+.switch {
+    position: relative;
+    display: inline-block;
+    width: 44px;
+    height: 22px;
+}
+
+.switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #ccc;
+    transition: .4s;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 16px;
+    width: 16px;
+    left: 3px;
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+}
+
+input:checked + .slider {
+    background-color: var(--gold-primary);
+}
+
+input:focus + .slider {
+    box-shadow: 0 0 1px var(--gold-primary);
+}
+
+input:checked + .slider:before {
+    transform: translateX(22px);
+}
+
+.slider.round {
+    border-radius: 34px;
+}
+
+.slider.round:before {
+    border-radius: 50%;
+}
+
