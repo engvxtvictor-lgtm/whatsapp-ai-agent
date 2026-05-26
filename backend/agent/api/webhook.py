@@ -33,6 +33,9 @@ async def handle(phone: str, text: str):
     if session["escalated"]:
         return
 
+    # Determinar se é a primeira mensagem do paciente antes de atualizar o histórico
+    is_first_message = len(session.get("history", [])) == 0
+
     # Censura CPF na entrada para a IA/Histórico, mas captura o CPF completo para o banco de dados
     censored_text, detected_cpf = ai_service.extract_and_censor_cpf(text)
     if detected_cpf:
@@ -107,8 +110,12 @@ async def handle(phone: str, text: str):
         (session["ai_attempts"] >= settings.MAX_AI_ATTEMPTS)
     )
 
+    # Adicionar mensagem do usuário à história da sessão
+    session = await sess.add_to_history(session, "user", censored_text)
+
     if needs_human_trigger:
         await whatsapp.send_escalation(phone)
+        session = await sess.add_to_history(session, "assistant", "Vou te transferir para um atendente agora. Aguarde um momento! 🙏")
         await whatsapp.notify_agent(phone, censored_text)
         session["escalated"] = True
         
@@ -141,15 +148,15 @@ async def handle(phone: str, text: str):
             except Exception as e:
                 logger.error(f"Erro ao salvar necessidade de atendimento humano: {e}")
     else:
-        if confidence >= settings.AI_CONFIDENCE_THRESHOLD:
-            await whatsapp.send_message(phone, response)
-        else:
-            await whatsapp.send_message(phone,
-                response + "\n\n_Caso queira falar com um atendente, é só pedir!_"
-            )
+        # Enviar resposta da IA
+        sent_response = response
+        if confidence < settings.AI_CONFIDENCE_THRESHOLD:
+            sent_response += "\n\n_Caso queira falar com um atendente, é só pedir!_"
+            
+        await whatsapp.send_message(phone, sent_response)
+        session = await sess.add_to_history(session, "assistant", sent_response)
 
         # Envia o PDF de serviços na primeira mensagem do paciente
-        is_first_message = len(session.get("history", [])) == 0
         pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
         if is_first_message and os.path.exists(pdf_path):
             pdf_url = f"{settings.BACKEND_PUBLIC_URL}/docs/{settings.SERVICES_PDF_FILENAME}"
@@ -159,6 +166,11 @@ async def handle(phone: str, text: str):
                 pdf_url=pdf_url,
                 filename=settings.SERVICES_PDF_FILENAME,
                 caption="📄 Segue nossa tabela completa de serviços e valores!"
+            )
+            session = await sess.add_to_history(
+                session, 
+                "assistant", 
+                f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n📄 Segue nossa tabela completa de serviços e valores!"
             )
 
     # 3. Registro Automático se todos os dados essenciais estiverem preenchidos
@@ -199,6 +211,20 @@ async def handle(phone: str, text: str):
                     except Exception as e:
                         logger.error(f"Erro ao resolver slot: {e}")
 
+                # Checar se o dia é ocupado (2 ou mais horários marcados com este agendamento)
+                is_busy_day = False
+                if slot_date_obj:
+                    query_booked = select(func.count(ClientWeb.id)).where(
+                        ClientWeb.slot_date == slot_date_obj,
+                        ClientWeb.status.in_(["pending", "confirmed"])
+                    )
+                    if existing:
+                        query_booked = query_booked.where(ClientWeb.id != existing.id)
+                    day_booked_res = await db.execute(query_booked)
+                    other_booked = day_booked_res.scalar() or 0
+                    if other_booked >= 1:
+                        is_busy_day = True
+
                 if not existing:
                     logger.info(f"Registrando agendamento de {session['name']}...")
                     new_client = ClientWeb(
@@ -214,7 +240,8 @@ async def handle(phone: str, text: str):
                         upsell_success=session.get("upsell_success", False),
                         upsell_service=session.get("upsell_service"),
                         status="pending",
-                        exam_id=exam_id
+                        exam_id=exam_id,
+                        needs_human=is_busy_day
                     )
                     db.add(new_client)
                     await db.commit()
@@ -230,25 +257,37 @@ async def handle(phone: str, text: str):
                     existing.upsell_success = session.get("upsell_success", False)
                     existing.upsell_service = session.get("upsell_service")
                     existing.exam_id = exam_id
+                    existing.status = "pending"
+                    if is_busy_day:
+                        existing.needs_human = True
                     await db.commit()
-                    logger.info("Agendamento atualizado com sucesso!")
+                    logger.info("Agendamento atualizado e retornado a pendente com sucesso!")
 
-                    confirm_msg = (
-                        f"📅 *Agendamento Solicitado!*\n\n"
-                        f"Olá *{session['name']}*, sua consulta de *{service_name}* foi enviada à nossa equipe.\n"
-                    )
-                    if slot_date_obj and raw_slot_time:
-                        confirm_msg += f"📅 *Data/Hora:* {slot_date_obj.strftime('%d/%m/%Y')} às {raw_slot_time}\n"
-                    else:
-                        confirm_msg += f"📅 *Data/Hora Sugerida:* {session['appointment_date']}\n"
-                    if session.get("upsell_success") and session.get("upsell_service"):
-                        confirm_msg += f"➕ *Serviço Adicional:* {session['upsell_service']}\n"
+                # Mensagem de confirmação unificada para novos e existentes
+                confirm_msg = (
+                    f"📅 *Agendamento Solicitado!*\n\n"
+                    f"Olá *{session['name']}*, sua consulta de *{service_name}* foi enviada à nossa equipe.\n"
+                )
+                if slot_date_obj and raw_slot_time:
+                    confirm_msg += f"📅 *Data/Hora:* {slot_date_obj.strftime('%d/%m/%Y')} às {raw_slot_time}\n"
+                else:
+                    confirm_msg += f"📅 *Data/Hora Sugerida:* {session['appointment_date']}\n"
+                if session.get("upsell_success") and session.get("upsell_service"):
+                    confirm_msg += f"➕ *Serviço Adicional:* {session['upsell_service']}\n"
+                
+                if is_busy_day:
+                    confirm_msg += "\n⚠️ *Nota:* Como este dia está bastante concorrido, nossa atendente foi chamada para confirmar o seu horário. Entraremos em contato em breve! 😊"
+                else:
                     confirm_msg += "\nSua consulta será confirmada em até *24 horas*! Te avisaremos aqui. 😊"
-                    await whatsapp.send_message(phone, confirm_msg)
+                
+                await whatsapp.send_message(phone, confirm_msg)
+                session = await sess.add_to_history(session, "assistant", confirm_msg)
+
+                # Notifica a recepção se o dia estiver ocupado
+                if is_busy_day:
+                    time_display = raw_slot_time if raw_slot_time else session['appointment_date']
+                    await whatsapp.notify_agent(phone, f"Dia ocupado! Confirmar horário de {session['name']} para {time_display}")
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
 
-
-    session = await sess.add_to_history(session, "user", censored_text)
-    session = await sess.add_to_history(session, "assistant", response)
     await sess.save_session(phone, session)

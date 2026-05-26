@@ -24,8 +24,8 @@ async def login(request: LoginRequest, db: AsyncSession = Depends(get_db)):
     admin = result.fetchone()
     if not admin:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
-    # admin is RowMapping, get fields
-    admin_dict = dict(admin)
+    # admin is a Row object, use _mapping to get a dict-like interface
+    admin_dict = dict(admin._mapping)
     if not verify_password(request.password, admin_dict["password_hash"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
     access_token = create_access_token(data={"sub": admin_dict["email"]})

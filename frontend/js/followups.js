@@ -1,32 +1,34 @@
 // 7. GERENCIAMENTO DE AUTOMACÕES DE FOLLOW-UP
     const followupRulesContainer = document.getElementById("follow-up-rules-container");
-    const modalFollowup = document.getElementById("modal-followup");
-    const btnAddFollowupModal = document.getElementById("btn-add-followup-modal");
-    const btnCloseFollowupModal = document.getElementById("btn-close-followup-modal");
-    const btnCancelFollowupModal = document.getElementById("btn-cancel-followup-modal");
-    const formAddFollowup = document.getElementById("form-add-followup");
 
     let allFollowups = [];
 
-    if (btnAddFollowupModal) {
-        btnAddFollowupModal.addEventListener("click", () => modalFollowup.classList.add("active"));
-    }
-    if (btnCloseFollowupModal) {
-        btnCloseFollowupModal.addEventListener("click", () => {
-            modalFollowup.classList.remove("active");
-            formAddFollowup.reset();
-        });
-    }
-    if (btnCancelFollowupModal) {
-        btnCancelFollowupModal.addEventListener("click", () => {
-            modalFollowup.classList.remove("active");
-            formAddFollowup.reset();
+    // Toggle de Sub-Painéis (Disparar na Hora vs Nova Automação)
+    const togglePills = document.querySelectorAll(".toggle-pill");
+    const subPanelInstant = document.getElementById("sub-panel-instant");
+    const subPanelAutomation = document.getElementById("sub-panel-automation");
+
+    if (togglePills) {
+        togglePills.forEach(pill => {
+            pill.addEventListener("click", () => {
+                togglePills.forEach(p => p.classList.remove("active"));
+                pill.classList.add("active");
+
+                const panel = pill.getAttribute("data-panel");
+                if (panel === "instant") {
+                    if (subPanelInstant) subPanelInstant.style.display = "block";
+                    if (subPanelAutomation) subPanelAutomation.style.display = "none";
+                } else if (panel === "automation") {
+                    if (subPanelInstant) subPanelInstant.style.display = "none";
+                    if (subPanelAutomation) subPanelAutomation.style.display = "block";
+                }
+            });
         });
     }
 
     async function loadFollowups() {
         try {
-            const res = await fetch("/api/followups");
+            const res = await fetch(`${API_BASE}/api/followups`);
             if (res.ok) {
                 allFollowups = await res.json();
                 renderFollowups();
@@ -42,8 +44,8 @@
 
         if (allFollowups.length === 0) {
             followupRulesContainer.innerHTML = `
-                <div style="padding: 30px; text-align: center; color: rgba(255,255,255,0.4); border: 1px dashed rgba(255,255,255,0.1); border-radius: 8px;">
-                    <i class="fa-regular fa-bell-slash" style="font-size: 24px; margin-bottom: 8px; display: block;"></i>
+                <div style="padding: 30px; text-align: center; color: var(--charcoal-text); opacity: 0.6; border: 1px dashed rgba(197, 168, 128, 0.3); border-radius: 8px; background-color: rgba(197, 168, 128, 0.03);">
+                    <i class="fa-regular fa-bell-slash" style="font-size: 24px; margin-bottom: 8px; display: block; color: var(--gold-primary);"></i>
                     Nenhuma regra de follow-up cadastrada.
                 </div>
             `;
@@ -51,6 +53,52 @@
         }
 
         allFollowups.forEach(rule => {
+            // Pacientes afetados / elegíveis
+            let clientsListHtml = "";
+            if (rule.affected_clients && rule.affected_clients.length > 0) {
+                const clientsListItems = rule.affected_clients.map(c => {
+                    const isSent = c.sent_status === "Enviado";
+                    const statusBadgeColor = isSent ? "#10b981" : "#c5a880";
+                    const statusBg = isSent ? "rgba(16, 185, 129, 0.1)" : "rgba(197, 168, 128, 0.1)";
+                    const dateText = isSent ? `em ${c.sent_at}` : `Consulta: ${c.appointment_date || 'Sem data'}`;
+                    
+                    return `
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid rgba(197,168,128,0.1); font-size: 13px;">
+                            <span style="font-weight: 500; color: var(--charcoal-text);"><i class="fa-regular fa-user" style="margin-right: 6px; color: var(--gold-primary);"></i>${c.name}</span>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 11px; color: var(--charcoal-text); opacity: 0.6;">${dateText}</span>
+                                <span class="badge" style="font-size: 10px; padding: 2px 6px; background-color: ${statusBg}; color: ${statusBadgeColor}; border: 1px solid ${statusBadgeColor}33;">
+                                    ${c.sent_status}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                clientsListHtml = `
+                    <div class="affected-clients-panel" style="margin-top: 15px; padding: 12px; background: rgba(197, 168, 128, 0.05); border: 1px solid rgba(197, 168, 128, 0.15); border-radius: 8px;">
+                        <h5 style="margin: 0 0 10px 0; color: var(--gold-primary); font-size: 13px; font-weight: 600; display: flex; align-items: center; gap: 6px;">
+                            <i class="fa-solid fa-users"></i> Pacientes Afetados (${rule.affected_clients.length})
+                        </h5>
+                        <div style="max-height: 120px; overflow-y: auto; padding-right: 4px;">
+                            ${clientsListItems}
+                        </div>
+                    </div>
+                `;
+            } else {
+                clientsListHtml = `
+                    <div class="affected-clients-panel" style="margin-top: 15px; padding: 12px; background: rgba(0, 0, 0, 0.01); border: 1px dashed rgba(197, 168, 128, 0.15); border-radius: 8px; text-align: center;">
+                        <p style="margin: 0; color: var(--charcoal-text); opacity: 0.5; font-size: 12px; font-style: italic;">
+                            <i class="fa-solid fa-user-slash" style="margin-right: 5px;"></i>Nenhum paciente confirmado elegível para esta regra.
+                        </p>
+                    </div>
+                `;
+            }
+
+            const ruleDescription = rule.is_recurring 
+                ? `Envia lembrete de pós-tratamento no WhatsApp <strong>${rule.delay_days} dia(s)</strong> após a realização, <span class="badge" style="font-size: 11px; padding: 2px 6px; background-color: rgba(197, 168, 128, 0.15); color: var(--gold-dark); font-weight: 600;"><i class="fa-solid fa-arrows-spin"></i> Repetindo a cada ${rule.recurrence_interval} dias</span>`
+                : `Envia lembrete de pós-tratamento no WhatsApp <strong>${rule.delay_days} dia(s)</strong> após a realização (Disparo Único).`;
+
             const card = document.createElement("div");
             card.className = "follow-up-card";
             card.innerHTML = `
@@ -69,8 +117,11 @@
                         </label>
                     </div>
                 </div>
-                <p class="rule-description">Envia lembrete de pós-tratamento no WhatsApp do paciente <strong>${rule.delay_days} dia(s)</strong> após a realização.</p>
-                <div class="rule-footer">
+                <p class="rule-description">${ruleDescription}</p>
+                
+                ${clientsListHtml}
+                
+                <div class="rule-footer" style="margin-top: 15px;">
                     <span><i class="fa-regular fa-message"></i> Template: "${rule.message_template}"</span>
                 </div>
             `;
@@ -80,7 +131,7 @@
             checkbox.addEventListener("change", async () => {
                 const isChecked = checkbox.checked;
                 try {
-                    const res = await fetch(`/api/followups/${rule.id}/toggle`, {
+                    const res = await fetch(`${API_BASE}/api/followups/${rule.id}/toggle`, {
                         method: "PUT"
                     });
                     if (res.ok) {
@@ -101,7 +152,7 @@
             btnDelete.addEventListener("click", async () => {
                 if (confirm(`Deseja realmente excluir a automação "${rule.name}"?`)) {
                     try {
-                        const res = await fetch(`/api/followups/${rule.id}`, {
+                        const res = await fetch(`${API_BASE}/api/followups/${rule.id}`, {
                             method: "DELETE"
                         });
                         if (res.ok) {
@@ -121,18 +172,46 @@
         });
     }
 
-    if (formAddFollowup) {
-        formAddFollowup.addEventListener("submit", async (e) => {
-            e.preventDefault();
-            const name = document.getElementById("followup-name").value.trim();
-            const service = document.getElementById("followup-service").value;
-            const delay_days = parseInt(document.getElementById("followup-delay").value);
-            const message_template = document.getElementById("followup-template").value.trim();
+    // Toggle de exibição do campo de recorrência na criação inline
+    const inlineFollowupIsRecurringSelect = document.getElementById("inline-followup-is-recurring");
+    const groupInlineRecurrence = document.getElementById("group-inline-recurrence");
+    if (inlineFollowupIsRecurringSelect && groupInlineRecurrence) {
+        inlineFollowupIsRecurringSelect.addEventListener("change", () => {
+            if (inlineFollowupIsRecurringSelect.value === "true") {
+                groupInlineRecurrence.style.display = "block";
+                const recurrenceIntervalInput = document.getElementById("inline-followup-recurrence-interval");
+                if (recurrenceIntervalInput) recurrenceIntervalInput.required = true;
+            } else {
+                groupInlineRecurrence.style.display = "none";
+                const recurrenceIntervalInput = document.getElementById("inline-followup-recurrence-interval");
+                if (recurrenceIntervalInput) recurrenceIntervalInput.required = false;
+            }
+        });
+    }
 
-            const payload = { name, service, delay_days, message_template, is_active: true };
+    const formInlineFollowup = document.getElementById("form-inline-followup");
+    if (formInlineFollowup) {
+        formInlineFollowup.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const name = document.getElementById("inline-followup-name").value.trim();
+            const service = document.getElementById("inline-followup-service").value;
+            const delay_days = parseInt(document.getElementById("inline-followup-delay").value);
+            const message_template = document.getElementById("inline-followup-template").value.trim();
+            const is_recurring = document.getElementById("inline-followup-is-recurring").value === "true";
+            const recurrence_interval = is_recurring ? parseInt(document.getElementById("inline-followup-recurrence-interval").value) : 0;
+
+            const payload = { 
+                name, 
+                service, 
+                delay_days, 
+                message_template, 
+                is_active: true, 
+                is_recurring, 
+                recurrence_interval 
+            };
 
             try {
-                const res = await fetch("/api/followups", {
+                const res = await fetch(`${API_BASE}/api/followups`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
@@ -142,8 +221,8 @@
                     const newRule = await res.json();
                     allFollowups.push(newRule);
                     renderFollowups();
-                    formAddFollowup.reset();
-                    modalFollowup.classList.remove("active");
+                    formInlineFollowup.reset();
+                    if (groupInlineRecurrence) groupInlineRecurrence.style.display = "none";
                 } else {
                     alert("Erro ao criar nova automação de follow-up.");
                 }
@@ -157,7 +236,7 @@
     // Popula dinamicamente os seletores de serviço com os exames vindos do backend
     function populateServiceSelects() {
         const clientServiceSelect = document.getElementById("client-service");
-        const followupServiceSelect = document.getElementById("followup-service");
+        const followupServiceSelect = document.getElementById("inline-followup-service");
 
         if (!filterServiceSelect || !clientServiceSelect || !followupServiceSelect) return;
 
@@ -247,7 +326,7 @@
 
             // Resolve atendimento humano no backend
             try {
-                const res = await fetch(`/api/clients/${client.id}/resolve-human`, {
+                const res = await fetch(`${API_BASE}/api/clients/${client.id}/resolve-human`, {
                     method: "PUT"
                 });
                 if (res.ok) {

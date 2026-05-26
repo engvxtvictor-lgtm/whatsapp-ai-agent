@@ -249,4 +249,283 @@
     75% { transform: rotate(-5deg); }
 }
 
+/* Novo Layout da Agenda: Grade Estilo Google Calendar */
+.schedule-grid-container {
+    overflow-x: auto;
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-gold-soft);
+    border-radius: 16px;
+    box-shadow: var(--shadow-soft);
+    margin-bottom: 40px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: 80px repeat(7, minmax(130px, 1fr));
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #ffffff;
+    min-width: 960px; /* Garante que os dias caibam sem esmagamento, criando barra de rolagem horizontal em telas menores */
+}
+
+.calendar-header-cell {
+    background: rgba(197, 168, 128, 0.06);
+    border-bottom: 2px solid var(--border-gold-soft);
+    border-right: 1px solid rgba(0, 0, 0, 0.04);
+    padding: 14px 8px;
+    text-align: center;
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--charcoal-dark);
+}
+
+.calendar-header-cell.time-column-header {
+    border-right: 2px solid var(--border-gold-soft);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--gold-dark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.calendar-time-cell {
+    background: rgba(0, 0, 0, 0.01);
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--gold-dark);
+    text-align: right;
+    padding-right: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    border-right: 2px solid var(--border-gold-soft);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.calendar-cell {
+    padding: 8px;
+    border-right: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 90px;
+    position: relative;
+    background: #ffffff;
+    transition: background 0.2s ease;
+}
+
+.calendar-cell:last-child {
+    border-right: none;
+}
+
+/* Divisor de almoço / intervalo */
+.calendar-time-cell.separator-row-time {
+    background: rgba(197, 168, 128, 0.03);
+    color: var(--gold-dark);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border-gold-soft);
+}
+
+.calendar-cell.separator-row-cells {
+    background: rgba(197, 168, 128, 0.03);
+    color: var(--gold-dark);
+    font-size: 11px;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 0.5px;
+    min-height: 35px;
+    border-bottom: 2px solid var(--border-gold-soft);
+    border-right: none;
+}
+
+/* Espaço vazio clicável para adicionar novo horário */
+.calendar-empty-cell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 70px;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px dashed transparent;
+    color: transparent;
+}
+
+.calendar-empty-cell:hover {
+    background: rgba(197, 168, 128, 0.06);
+    border-color: var(--border-gold-soft);
+    color: var(--gold-primary);
+}
+
+.calendar-empty-cell i {
+    font-size: 16px;
+}
+
+/* Cards de Slots no Calendário */
+.calendar-slot-card {
+    background: rgba(0, 0, 0, 0.02);
+    border: 1px solid rgba(0, 0, 0, 0.04);
+    border-radius: 12px;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: relative;
+    transition: all 0.2s ease;
+}
+
+.calendar-slot-card:hover {
+    border-color: rgba(197, 168, 128, 0.4);
+    background: rgba(197, 168, 128, 0.03);
+    box-shadow: 0 4px 12px rgba(197, 168, 128, 0.08);
+}
+
+.calendar-slot-card.inactive {
+    opacity: 0.6;
+    border-style: dashed;
+    background: rgba(0, 0, 0, 0.01);
+}
+
+.calendar-slot-card.inactive:hover {
+    opacity: 0.85;
+}
+
+.calendar-slot-card.status-booked {
+    border-left: 3px solid var(--gold-primary);
+    background: rgba(197, 168, 128, 0.02);
+}
+
+.slot-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.slot-time {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+    display: flex;
+    align-items: center;
+}
+
+.slot-status-badge {
+    font-size: 8px;
+    padding: 1px 5px;
+    border-radius: 20px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+.slot-status-badge.badge-active {
+    background-color: rgba(16, 185, 129, 0.12);
+    color: #10b981;
+}
+
+.slot-status-badge.badge-inactive {
+    background-color: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+}
+
+.slot-card-body {
+    font-size: 11px;
+}
+
+.slot-available-row {
+    color: #10b981;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+}
+
+.slot-available-row i {
+    font-size: 10px;
+}
+
+.slot-patient-row {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    padding: 6px 8px;
+    background: rgba(197, 168, 128, 0.05);
+    border-radius: 6px;
+    border: 1px solid rgba(197, 168, 128, 0.1);
+}
+
+.slot-patient-name {
+    font-weight: 600;
+    color: var(--charcoal-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100%;
+}
+
+.slot-patient-badge {
+    align-self: flex-start;
+    font-size: 8px;
+    padding: 1px 4px;
+    border-radius: 4px;
+    font-weight: 500;
+}
+
+.slot-card-actions {
+    display: flex;
+    gap: 4px;
+    justify-content: flex-end;
+    border-top: 1px solid rgba(0, 0, 0, 0.03);
+    padding-top: 6px;
+    margin-top: 2px;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    transform: translateY(2px);
+}
+
+.calendar-slot-card:hover .slot-card-actions {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.btn-slot-action {
+    background: none;
+    border: 1px solid rgba(0, 0, 0, 0.05);
+    color: rgba(42, 49, 60, 0.6);
+    padding: 4px 6px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-slot-action.btn-toggle-slot:hover {
+    background: rgba(197, 168, 128, 0.12);
+    color: var(--gold-dark);
+    border-color: rgba(197, 168, 128, 0.2);
+}
+
+.btn-slot-action.btn-delete-slot:hover {
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
 

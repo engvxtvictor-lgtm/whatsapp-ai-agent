@@ -42,7 +42,7 @@
         btnSubmitCampaign.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Disparando Mensagens...`;
 
         try {
-            const response = await fetch("/api/campaigns", {
+            const response = await fetch(`${API_BASE}/api/campaigns`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({

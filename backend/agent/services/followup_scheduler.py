@@ -98,25 +98,41 @@ async def run_followup_check():
                 if not service_match:
                     continue
 
-                # Calcula a data alvo para o follow-up
-                target_date = appointment_date + timedelta(days=followup.delay_days)
-
-                # Só dispara se hoje é o dia certo (ou passou — envia com até 3 dias de atraso)
-                days_overdue = (today - target_date).days
-                if not (0 <= days_overdue <= 3):
-                    continue
-
-                # Verifica se já foi enviado para esse cliente+followup
+                # Busca logs de envio anteriores para esse cliente e followup, ordenados do mais recente
                 log_res = await db.execute(
-                    select(FollowupLogWeb).where(
+                    select(FollowupLogWeb)
+                    .where(
                         and_(
                             FollowupLogWeb.client_id == client.id,
                             FollowupLogWeb.followup_id == followup.id,
                         )
                     )
+                    .order_by(FollowupLogWeb.sent_at.desc())
                 )
-                already_sent = log_res.scalars().first()
-                if already_sent:
+                sent_logs = log_res.scalars().all()
+
+                # Determina data alvo
+                is_rec = getattr(followup, "is_recurring", False)
+                rec_val = getattr(followup, "recurrence_interval", 0) or 0
+
+                if is_rec and rec_val > 0:
+                    if sent_logs:
+                        # Se já foi enviado alguma vez, o próximo envio é após 'recurrence_interval' dias do último envio
+                        last_sent_date = sent_logs[0].sent_at.date()
+                        target_date = last_sent_date + timedelta(days=rec_val)
+                    else:
+                        # Primeiro envio do recorrente respeita o delay inicial
+                        target_date = appointment_date + timedelta(days=followup.delay_days)
+                else:
+                    # Envio único
+                    if sent_logs:
+                        # Já foi enviado, pula
+                        continue
+                    target_date = appointment_date + timedelta(days=followup.delay_days)
+
+                # Só dispara se hoje é o dia certo (ou passou — envia com até 3 dias de atraso)
+                days_overdue = (today - target_date).days
+                if not (0 <= days_overdue <= 3):
                     continue
 
                 # Monta e envia a mensagem

@@ -53,6 +53,16 @@ async def test_chat(request: Request):
     return {"messages": captured}
 
 
+@router.get("/chat/{phone}/history")
+async def get_chat_history(phone: str):
+    session = await sess.get_session(phone)
+    messages = []
+    for h in session.get("history", []):
+        role = "user" if h["role"] == "user" else "bot"
+        messages.append({"role": role, "text": h["content"]})
+    return {"messages": messages}
+
+
 @router.delete("/session/{phone}")
 async def clear_test_session(phone: str):
     await sess.redis_client.delete(f"{sess.PREFIX}{phone}")

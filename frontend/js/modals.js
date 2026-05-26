@@ -44,7 +44,7 @@
         };
 
         try {
-            const response = await fetch("/api/clients", {
+            const response = await fetch(`${API_BASE}/api/clients`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
@@ -81,7 +81,7 @@
         const payload = { name, email, role };
 
         try {
-            const response = await fetch("/api/admins", {
+            const response = await fetch(`${API_BASE}/api/admins`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)

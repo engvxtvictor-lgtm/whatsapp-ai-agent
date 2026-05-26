@@ -63,6 +63,8 @@ class FollowupWeb(Base):
     delay_days: Mapped[int] = mapped_column(nullable=False)              # Dias decorridos após a consulta (ex: 180)
     message_template: Mapped[str] = mapped_column(String(500), nullable=False) # Template da mensagem com placeholders
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False) # Status de atividade
+    is_recurring: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False) # Se repete periodicamente
+    recurrence_interval: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0) # Intervalo em dias
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

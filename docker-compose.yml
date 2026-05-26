@@ -78,6 +78,18 @@ services:
     depends_on:
       - backend
 
+  # Front‑End estático (Nginx)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lumina-frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+
 volumes:
   postgres_data:
     driver: local

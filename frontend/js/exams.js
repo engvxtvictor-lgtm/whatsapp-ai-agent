@@ -104,7 +104,7 @@
             tr.querySelector(".btn-delete-exam").addEventListener("click", async () => {
                 if (confirm(`Deseja realmente excluir o procedimento "${exam.name}"?`)) {
                     try {
-                        const res = await fetch(`/api/exams/${exam.id}`, {
+                        const res = await fetch(`${API_BASE}/api/exams/${exam.id}`, {
                             method: "DELETE"
                         });
                         if (res.ok) {
@@ -136,7 +136,7 @@
             const payload = { name, price, category };
 
             const isEdit = id !== "";
-            const url = isEdit ? `/api/exams/${id}` : "/api/exams";
+            const url = isEdit ? `${API_BASE}/api/exams/${id}` : `${API_BASE}/api/exams`;
             const method = isEdit ? "PUT" : "POST";
 
             try {

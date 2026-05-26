@@ -45,7 +45,7 @@
     const btnCloseSlotModal = document.getElementById("btn-close-slot-modal");
     const btnCancelSlotModal = document.getElementById("btn-cancel-slot-modal");
     const formAddSlot = document.getElementById("form-add-slot");
-    const slotsTableBody = document.getElementById("slots-table-body");
+    const scheduleGridContainer = document.getElementById("schedule-grid-container");
     const slotSearchInput = document.getElementById("slot-search");
 
     // Fechar Modais

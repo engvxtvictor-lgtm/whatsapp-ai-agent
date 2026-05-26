@@ -225,7 +225,7 @@ input:checked + .slider:before {
 .btn-delete-rule {
     background: none;
     border: none;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(42, 49, 60, 0.35);
     cursor: pointer;
     font-size: 14px;
     transition: all 0.2s ease;
@@ -238,6 +238,6 @@ input:checked + .slider:before {
 
 .btn-delete-rule:hover {
     color: #ef4444;
-    background-color: rgba(239, 68, 68, 0.15);
+    background-color: rgba(239, 68, 68, 0.1);
 }
 

@@ -136,7 +136,7 @@
                     btnDeleteClient.disabled = true;
                     btnDeleteClient.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i>`;
                     try {
-                        const response = await fetch(`/api/clients/${client.id}`, {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}`, {
                             method: "DELETE"
                         });
                         if (response.ok) {
@@ -171,7 +171,7 @@
                 e.stopPropagation(); // Evita selecionar o card
                 const checked = iaCheckbox.checked;
                 try {
-                    const response = await fetch(`/api/sessions/${client.phone}/toggle-ai`, {
+                    const response = await fetch(`${API_BASE}/api/sessions/${client.phone}/toggle-ai`, {
                         method: "PUT"
                     });
                     if (response.ok) {
@@ -200,7 +200,7 @@
                     btnConfirm.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Aceitando...`;
 
                     try {
-                        const response = await fetch(`/api/clients/${client.id}/confirm`, {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}/confirm`, {
                             method: "PUT",
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({ admin_name: loggedAdminName })
@@ -227,7 +227,7 @@
                     btnCancel.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Recusando...`;
 
                     try {
-                        const response = await fetch(`/api/clients/${client.id}/cancel`, {
+                        const response = await fetch(`${API_BASE}/api/clients/${client.id}/cancel`, {
                             method: "PUT"
                         });
                         if (response.ok) {
@@ -259,7 +259,7 @@
                     
                     // Resolve needs_human on the backend
                     try {
-                        const res = await fetch(`/api/clients/${client.id}/resolve-human`, {
+                        const res = await fetch(`${API_BASE}/api/clients/${client.id}/resolve-human`, {
                             method: "PUT"
                         });
                         if (res.ok) {
