@@ -1,0 +1,122 @@
+/* 8. Grid de Pacientes (Cards Quadradinhos) */
+.clients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 25px;
+}
+
+.client-card {
+    background: var(--bg-card);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-gold-soft);
+    border-radius: 16px;
+    padding: 24px;
+    position: relative;
+    box-shadow: var(--shadow-soft);
+    transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    cursor: pointer;
+}
+
+.client-card:hover {
+    transform: translateY(-5px);
+    border-color: var(--gold-primary);
+    box-shadow: var(--shadow-hover);
+}
+
+/* Checkbox overlay */
+.client-card-select {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    width: 20px;
+    height: 20px;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+}
+
+.client-card:hover .client-card-select,
+.client-card.selected .client-card-select {
+    opacity: 1;
+}
+
+.client-card.selected {
+    border-color: var(--gold-primary);
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(197, 168, 128, 0.08) 100%);
+    box-shadow: 0 10px 30px rgba(197, 168, 128, 0.2);
+}
+
+/* Round Profile Pic */
+.client-avatar-container {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    padding: 3px;
+    background: linear-gradient(135deg, var(--gold-primary) 0%, rgba(255,255,255,0) 100%);
+    margin-bottom: 15px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+
+.client-avatar {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background-color: #f0f0f2;
+    object-fit: cover;
+}
+
+.client-name {
+    font-family: var(--font-heading);
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--charcoal-dark);
+    margin-bottom: 6px;
+}
+
+.client-meta {
+    font-size: 13px;
+    color: rgba(42, 49, 60, 0.6);
+    margin-bottom: 4px;
+}
+
+.client-meta strong {
+    color: var(--charcoal-dark);
+}
+
+/* Badges */
+.client-badges {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-top: 15px;
+}
+
+.badge {
+    padding: 4px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    border-radius: 30px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    color: #ffffff;
+}
+
+.badge-wa {
+    background-color: var(--whatsapp-green);
+}
+
+.badge-ig {
+    background: var(--instagram-grad);
+}
+
+.badge-service {
+    background: none;
+    border: 1px solid var(--gold-primary);
+    color: var(--gold-dark);
+}
+
