@@ -11,7 +11,7 @@
     <!-- FontAwesome para ícones premium -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- CSS Customizado -->
-    <link rel="stylesheet" href="/frontend/style.css">
+    <link rel="stylesheet" href="/frontend/css/main.css">
 </head>
 <body>
 
@@ -28,11 +28,11 @@
             <form class="login-form" id="login-form">
                 <div class="form-group">
                     <label for="login-email">E-mail</label>
-                    <input type="email" id="login-email" required placeholder="admin@lumina.com" value="admin@lumina.com">
+                    <input type="email" id="login-email" required placeholder="admin@lumina.com">
                 </div>
                 <div class="form-group">
                     <label for="login-password">Senha</label>
-                    <input type="password" id="login-password" required placeholder="••••••••" value="admin123">
+                    <input type="password" id="login-password" required placeholder="••••••••">
                 </div>
                 <button type="submit" class="login-btn">Entrar no Painel</button>
                 <div class="login-error" id="login-error">E-mail ou senha incorretos. Tente novamente!</div>
@@ -100,7 +100,7 @@
                 <div class="header-right">
                     <!-- Logotipo da Clínica Lúmina -->
                     <div class="logo-container">
-                        <img src="/frontend/lumina-logo.jpg" alt="Lúmina Logo" class="lumina-logo">
+                        <img src="/frontend/assets/lumina-logo.jpg" alt="Lúmina Logo" class="lumina-logo">
                     </div>
                 </div>
             </header>
@@ -600,6 +600,16 @@
     <div id="toast-container"></div>
 
     <!-- JS Customizado -->
-    <script src="/frontend/app.js"></script>
+    <script src="/frontend/js/auth.js" defer></script>
+    <script src="/frontend/js/state.js" defer></script>
+    <script src="/frontend/js/nav.js" defer></script>
+    <script src="/frontend/js/clients.js" defer></script>
+    <script src="/frontend/js/admins.js" defer></script>
+    <script src="/frontend/js/campaigns.js" defer></script>
+    <script src="/frontend/js/modals.js" defer></script>
+    <script src="/frontend/js/followups.js" defer></script>
+    <script src="/frontend/js/exams.js" defer></script>
+    <script src="/frontend/js/schedule.js" defer></script>
+    <script src="/frontend/js/main.js" defer></script>
 </body>
 </html>

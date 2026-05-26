@@ -152,9 +152,54 @@ O projeto está estruturado da seguinte forma:
 
 ### 1. Configurando o Ambiente
 Crie um arquivo `.env` na raiz do projeto baseado no `.env.example`:
+# 📦 Configuração e Execução
+
+## 1️⃣ Configurando o Ambiente
+
 ```bash
+# Copie o arquivo de exemplo de variáveis de ambiente
 cp .env.example .env
+
+# Edite o .env e preencha as variáveis:
+#   - GROQ_API_KEY: sua chave da API Groq
+#   - HUMAN_PHONE: número do atendente (ex.: 5511999999999)
 ```
+
+## 2️⃣ Criando usuário administrador (seed)
+
+```bash
+# Cria um admin de teste (email: admin@exemplo.com, senha: senha123)
+python scratch/seed_admin.py
+```
+
+## 3️⃣ Inicializando o Backend (FastAPI)
+
+```bash
+# Crie e ative o ambiente virtual
+python -m venv venv
+venv\\Scripts\\activate  # Windows
+# ou source venv/bin/activate  # Linux/macOS
+
+# Instale as dependências Python (arquivo backend/requirements.txt)
+pip install -r backend/requirements.txt
+
+# Rode o servidor FastAPI
+uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+## 4️⃣ Inicializando o Frontend (Gateway Baileys)
+
+```bash
+cd baileys
+npm install
+node index.js
+```
+
+> Escaneie o QR Code que aparecerá no terminal para conectar ao WhatsApp.
+
+## 5️⃣ Acessando o Painel
+
+Abra o navegador em `http://127.0.0.1:8000/`. Use as credenciais do admin criado acima (email **admin@exemplo.com**, senha **senha123**) para acessar a interface.
 Preencha a variável `GROQ_API_KEY` com sua credencial Groq e `HUMAN_PHONE` com o número de WhatsApp do atendente que receberá as escalações (com DDI + DDD, ex: `5511999999999`).
 
 ### 2. Inicializando o Gateway (Baileys)
