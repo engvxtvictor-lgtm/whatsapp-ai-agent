@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")
 
 from backend.system.database import AsyncSession, engine, Base
 from backend.system.models.web_models import ClientWeb, AdminWeb, ServiceWeb, FollowupWeb, ExamWeb, ScheduleSlotWeb
+from backend.system.auth import get_password_hash
 
 async def seed_db():
     print("Iniciando semeadura do banco de dados...")
@@ -20,23 +21,28 @@ async def seed_db():
     async with AsyncSession() as session:
         # Criando administradores padrão
         print("Criando administradores padrao...")
+        # Senha padrão para seed: admin123 (MUDE EM PRODUÇÃO usando create_admin.py)
+        default_password_hash = get_password_hash("admin123")
         admins = [
             AdminWeb(
                 name="Dra. Ana Souza",
-                email="ana.souza@odontoclinic.com",
+                email="ana.souza@clinicalumina.com",
                 role="Dentista Principal",
+                password_hash=default_password_hash,
                 avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Ana"
             ),
             AdminWeb(
                 name="Carlos Eduardo",
-                email="carlos.eduardo@odontoclinic.com",
+                email="carlos.eduardo@clinicalumina.com",
                 role="Administrador",
+                password_hash=default_password_hash,
                 avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos"
             ),
             AdminWeb(
                 name="Mariana Lima",
-                email="mariana.lima@odontoclinic.com",
+                email="mariana.lima@clinicalumina.com",
                 role="Atendente",
+                password_hash=default_password_hash,
                 avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Mariana"
             )
         ]

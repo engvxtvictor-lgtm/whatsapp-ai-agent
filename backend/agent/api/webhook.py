@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, BackgroundTasks
-from sqlalchemy import select
+from sqlalchemy import select, func
 from backend.agent.services import session as sess
 from backend.agent.services import ai_service, faq_service, whatsapp
 from backend.agent.services import schedule_service
@@ -40,7 +40,7 @@ async def handle(phone: str, text: str):
     censored_text, detected_cpf = ai_service.extract_and_censor_cpf(text)
     if detected_cpf:
         logger.info(f"CPF detectado e censurado para a IA: {detected_cpf[:5]}******")
-        session["cpf"] = detected_cpf
+        session["cpf"] = detected_cpf[:14]
 
     # Detecta se veio do Instagram pela mensagem inicial (Deep link do ManyChat)
     lower_text = text.lower()
@@ -97,7 +97,9 @@ async def handle(phone: str, text: str):
                 if key == "cpf":
                     if "*" in str(metadata[key]):
                         continue
-                session[key] = metadata[key]
+                    session[key] = str(metadata[key])[:14]
+                else:
+                    session[key] = metadata[key]
 
     # Verifica gatilho de suporte humano por palavras-chave na mensagem do usuario
     keywords = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
@@ -129,7 +131,7 @@ async def handle(phone: str, text: str):
                 if not client_record:
                     client_record = ClientWeb(
                         name=session.get("name") or f"Paciente ({phone[-4:]})",
-                        cpf=session.get("cpf") or "000.000.000-00",
+                        cpf=str(session.get("cpf"))[:14] if session.get("cpf") else "000.000.000-00",
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service="Atendimento Humano",
@@ -229,7 +231,7 @@ async def handle(phone: str, text: str):
                     logger.info(f"Registrando agendamento de {session['name']}...")
                     new_client = ClientWeb(
                         name=session["name"],
-                        cpf=session["cpf"],
+                        cpf=str(session["cpf"])[:14],
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service=service_name,
@@ -249,7 +251,7 @@ async def handle(phone: str, text: str):
                 else:
                     logger.info(f"Atualizando agendamento para {phone}...")
                     existing.name = session["name"]
-                    existing.cpf = session["cpf"]
+                    existing.cpf = str(session["cpf"])[:14]
                     existing.service = service_name
                     existing.appointment_date = session["appointment_date"]
                     existing.slot_id = slot_id
