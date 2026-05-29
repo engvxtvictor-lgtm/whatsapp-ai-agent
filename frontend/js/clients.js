@@ -195,7 +195,9 @@
 
                 btnConfirm.addEventListener("click", async (e) => {
                     e.stopPropagation(); // Evita selecionar o card
-                    const loggedAdminName = "Dra. Ana Souza"; // admin padrao
+                    const adminEmail = localStorage.getItem("admin_email");
+                    const currentAdmin = allAdmins.find(a => a.email === adminEmail);
+                    const loggedAdminName = currentAdmin ? currentAdmin.name : "Dra. Ana Souza";
                     btnConfirm.disabled = true;
                     btnConfirm.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Aceitando...`;
 

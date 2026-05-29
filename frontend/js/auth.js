@@ -8,6 +8,22 @@ function checkAuth() {
     const token = localStorage.getItem("access_token");
     if (token) {
         loginScreen.classList.add("hidden");
+        // Decodifica o payload do JWT para recuperar o admin_email se necessário
+        if (!localStorage.getItem("admin_email")) {
+            try {
+                const base64Url = token.split('.')[1];
+                const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+                const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+                const payload = JSON.parse(jsonPayload);
+                if (payload && payload.sub) {
+                    localStorage.setItem("admin_email", payload.sub);
+                }
+            } catch (e) {
+                console.error("Erro ao decodificar token:", e);
+            }
+        }
     } else {
         loginScreen.classList.remove("hidden");
     }
@@ -26,6 +42,7 @@ loginForm.addEventListener("submit", async (e) => {
         if (!res.ok) throw new Error("Credenciais inválidas");
         const data = await res.json();
         localStorage.setItem("access_token", data.access_token);
+        localStorage.setItem("admin_email", email);
         loginError.style.display = "none";
         loginScreen.classList.add("hidden");
     } catch (err) {
@@ -37,6 +54,7 @@ loginForm.addEventListener("submit", async (e) => {
 btnLogout.addEventListener("click", (e) => {
     e.preventDefault();
     localStorage.removeItem("access_token");
+    localStorage.removeItem("admin_email");
     checkAuth();
 });
 

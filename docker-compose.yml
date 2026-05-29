@@ -36,7 +36,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # Backend FastAPI e Frontend Estático
+  # Backend FastAPI
   backend:
     build:
       context: .
@@ -49,13 +49,22 @@ services:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/agent_db
       - REDIS_URL=redis://redis:6379
       - OPENAI_API_URL=https://api.openai.com/v1
-      - OPENAI_MODEL=gpt-4o-mini
+      - OPENAI_MODEL=${OPENAI_MODEL:-gpt-4o-mini}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - AI_CONFIDENCE_THRESHOLD=0.70
-      - SESSION_TTL_SECONDS=3600
-      - HUMAN_PHONE=5511999999999
-      - MAX_AI_ATTEMPTS=3
+      - AI_CONFIDENCE_THRESHOLD=${AI_CONFIDENCE_THRESHOLD:-0.70}
+      - SESSION_TTL_SECONDS=${SESSION_TTL_SECONDS:-3600}
+      - HUMAN_PHONE=${HUMAN_PHONE:-5511999999999}
+      - MAX_AI_ATTEMPTS=${MAX_AI_ATTEMPTS:-3}
       - WHATSAPP_API_URL=http://baileys:3000
+      - BACKEND_PUBLIC_URL=${BACKEND_PUBLIC_URL:-http://localhost:8000}
+      - SERVICES_PDF_FILENAME=${SERVICES_PDF_FILENAME:-lumina_nossos_servicos.pdf}
+      # Segurança — OBRIGATÓRIO definir no .env do servidor de produção
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - ACCESS_TOKEN_EXPIRE_MINUTES=${ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      # CORS — em produção, defina com os domínios reais (ex: ["https://app.lumina.com.br"])
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-["*"]}
+      # Modo debug — NUNCA deixar true em produção
+      - DEBUG=${DEBUG:-false}
     depends_on:
       db:
         condition: service_healthy

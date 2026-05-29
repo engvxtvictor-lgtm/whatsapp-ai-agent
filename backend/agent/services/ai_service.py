@@ -255,9 +255,12 @@ def _build_simulated_response(message: str, history: list) -> str:
         if re.search(date_pattern, msg) or any(w in msg.lower() for w in ["amanhã", "amanha", "segunda", "terça", "quarta", "quinta", "sexta", "sábado", "sabado", "hoje"]):
             match_date = re.search(r"\b\d{1,2}/\d{1,2}(/\d{2,4})?\b", msg)
             match_time = re.search(r"\b\d{1,2}:\d{2}\b|\b\d{1,2}h\b", msg)
-            d = match_date.group(0) if match_date else "em breve"
+            d = match_date.group(0) if match_date else None
             t = match_time.group(0) if match_time else "14:00"
-            appointment_date = f"{d} às {t}"
+            if d:
+                appointment_date = f"o dia {d} às {t}"
+            else:
+                appointment_date = f"o horário sugerido das {t}"
             break
 
     # Verificação se upsell já foi oferecido
@@ -293,11 +296,11 @@ def _build_simulated_response(message: str, history: list) -> str:
             simulated_metadata["upsell_service"] = "Clareamento"
             response = "Que ótimo! Adicionei o Clareamento ao seu plano. A equipe da recepção vai entrar em contato para confirmar tudo. Tenha um excelente dia! ✨"
         else:
-            response = f"Sem problemas! Mantive apenas a sua {service or 'consulta'} agendada. A equipe da recepção entrará em contato em breve para confirmar. Tenha um excelente dia! ✨"
+            response = f"Sem problemas! Mantive apenas a sua solicitação de {service or 'consulta'} pendente de confirmação. A equipe da recepção entrará em contato em breve para confirmar tudo. Tenha um excelente dia! ✨"
     elif name and cpf and service and appointment_date:
         response = (
             f"Perfeito! Cadastro realizado com sucesso. 🎉\n"
-            f"Agendei uma consulta de *{service}* para o dia {appointment_date}.\n"
+            f"Solicitei o agendamento de uma consulta de *{service}* para {appointment_date}.\n"
             f"Aproveita e já inclui um *Clareamento com desconto especial* junto? 😄"
         )
     elif name and cpf and service:
