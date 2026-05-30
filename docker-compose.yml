@@ -95,7 +95,7 @@ services:
     container_name: lumina-frontend
     restart: always
     ports:
-      - "8080:80"
+      - "8087:80"
     depends_on:
       - backend
 

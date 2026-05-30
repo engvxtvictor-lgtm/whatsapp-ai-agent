@@ -7,7 +7,6 @@ import os
 
 from backend.agent.api.webhook import router as webhook_router
 from backend.agent.api.dashboard import router as dashboard_router
-from backend.agent.api.test_chat import router as test_router
 from backend.agent.api.auth import router as auth_router
 from backend.agent.services.followup_scheduler import create_scheduler
 import backend.system.models  # Garante que os modelos sejam carregados para criação das tabelas
@@ -53,7 +52,6 @@ app.add_middleware(
 # Registro de Rotas
 app.include_router(webhook_router)
 app.include_router(dashboard_router)
-app.include_router(test_router)
 app.include_router(auth_router)
 
 # Servir documentos (PDFs) como arquivos estáticos
