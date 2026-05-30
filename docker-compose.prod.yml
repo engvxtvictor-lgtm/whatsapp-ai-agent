@@ -83,7 +83,7 @@ services:
     container_name: lumina-frontend-prod
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "8080:80"
     volumes:
       - ./frontend/nginx.prod.conf:/etc/nginx/conf.d/nginx.conf:ro
     depends_on:
