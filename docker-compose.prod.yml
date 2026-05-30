@@ -1,0 +1,96 @@
+version: '3.8'
+
+services:
+  # Banco de Dados PostgreSQL (Produção)
+  db:
+    image: postgres:15-alpine
+    container_name: lumina-db-prod
+    restart: unless-stopped
+    environment:
+      - POSTGRES_DB=${DB_NAME:-agent_db}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+    # Apenas expõe a porta localmente por segurança (evita acesso externo direto)
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data_prod:/var/lib/postgresql/data
+      - ./backend/system/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-agent_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Cache Redis (Produção)
+  redis:
+    image: redis:7-alpine
+    container_name: lumina-redis-prod
+    restart: unless-stopped
+    # Apenas expõe a porta localmente por segurança
+    ports:
+      - "127.0.0.1:6379:6379"
+    volumes:
+      - redis_data_prod:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Backend FastAPI (Produção)
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: lumina-backend-prod
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@db:5432/${DB_NAME:-agent_db}
+      - REDIS_URL=redis://redis:6379
+      - WHATSAPP_API_URL=http://baileys:3000
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Gateway Baileys Node.js (Produção)
+  baileys:
+    build:
+      context: ./baileys
+      dockerfile: Dockerfile
+    container_name: lumina-baileys-prod
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      - BACKEND_URL=http://backend:8000
+    volumes:
+      - ./baileys/auth:/app/auth
+    depends_on:
+      - backend
+
+  # Nginx Servindo Frontend e Agindo como Proxy Reverso para o Backend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: lumina-frontend-prod
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/nginx.prod.conf:/etc/nginx/conf.d/nginx.conf:ro
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data_prod:
+    driver: local
+  redis_data_prod:
+    driver: local

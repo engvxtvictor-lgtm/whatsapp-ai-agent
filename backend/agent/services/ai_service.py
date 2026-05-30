@@ -128,6 +128,61 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
         return data["choices"][0]["message"]["content"]
 
 
+async def _call_vigilante_guardrail(user_message: str, ai_response: str) -> bool:
+    """
+    Agente Vigia (LLM-as-a-Judge). Avalia se a resposta da IA está dentro do escopo.
+    Retorna True se estiver tudo ok, e False se houver alucinação ou desvio de contexto.
+    """
+    if not settings.OPENAI_API_KEY:
+        return True  # Ignora o vigia se não houver API key
+
+    url = f"{settings.OPENAI_API_URL}/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    system_prompt = (
+        "Você é o Agente Vigia de Qualidade de uma clínica odontológica.\n"
+        "Sua única função é avaliar se a Resposta da IA para a Mensagem do Usuário está adequada.\n\n"
+        "REGRAS DE REJEIÇÃO (Responda ALUCINAÇÃO):\n"
+        "1. A IA está respondendo perguntas ou dando dicas sobre assuntos NÃO relacionados a odontologia "
+        "(ex: receitas de bolo, conserto de carros, teorias físicas, contabilidade, programação, etc).\n"
+        "2. A IA está inventando preços absurdos ou procedimentos médicos que não existem na clínica.\n"
+        "3. A IA se comporta de forma inadequada ou revela que é uma inteligência artificial.\n\n"
+        "REGRAS DE APROVAÇÃO (Responda APROVADO):\n"
+        "1. A IA respondeu de forma educada, informando que só trata de odontologia e pedindo para voltar ao assunto.\n"
+        "2. A IA focou estritamente no escopo da clínica odontológica.\n\n"
+        "Você deve responder APENAS com uma única palavra: APROVADO ou ALUCINAÇÃO."
+    )
+    
+    prompt = f"Mensagem do Usuário: {user_message}\nResposta da IA: {ai_response}"
+    
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.0,
+        "max_tokens": 10,
+    }
+    
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(url, headers=headers, json=payload)
+            if resp.status_code == 200:
+                result = resp.json()["choices"][0]["message"]["content"].strip().upper()
+                if "ALUCINAÇÃO" in result:
+                    return False
+    except Exception as e:
+        logger.error(f"Erro no Agente Vigia: {e}")
+        # Se o vigia falhar (ex: timeout), aprova por padrão para não travar o fluxo
+        pass
+        
+    return True
+
+
 # ──────────────────────────────────────────────
 # EXTRAÇÃO DE METADADOS DA RESPOSTA DA IA
 # ──────────────────────────────────────────────
@@ -437,11 +492,19 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
     # 6. Parseia e limpa a resposta
     logger.info(f"TEXTO BRUTO DA IA:\n{text}")
     confidence = _parse_confidence(text)
-    metadata = _parse_metadata(text)
+    metadata = _parse_metadata(text) or {}
     clean = _remove_structured_lines(text)
     clean = validate_output_guardrail(clean)
 
-    # 7. Aplica guardrail de upsell para evitar serviços inexistentes/hallucinados
+    # 7. Chama o Agente Vigia para auditar a resposta limpa
+    is_approved = await _call_vigilante_guardrail(message, clean)
+    if not is_approved:
+        logger.warning(f"VIGIA DETECTOU ALUCINAÇÃO OU DESVIO DE ESCOPO! Mensagem do usuário: '{message}'")
+        # Força transbordo bloqueando a resposta gerada
+        fallback_msg = "Peço desculpas, mas não consigo te ajudar com esse assunto. Vou te transferir agora mesmo para um de nossos atendentes humanos! 🙏"
+        return fallback_msg, 0.0, {"needs_human": True}
+
+    # 8. Aplica guardrail de upsell para evitar serviços inexistentes/hallucinados
     clean, metadata = apply_upsell_guardrail(clean, metadata, valid_exam_names)
 
     logger.info(f"IA respondeu | confianca={confidence:.2f} | metadata={metadata}")
