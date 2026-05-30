@@ -1,4 +1,3 @@
-// Configuração global da API — importado por todos os módulos JS do frontend
-// Em produção, usa URL relativa para que o Nginx faça o proxy para o backend.
-// Em desenvolvimento local (sem Nginx), altere para "http://localhost:8000".
-const API_BASE = "";
+// Permite configurar a URL do backend de forma dinâmica se necessário (ex: fora do proxy Nginx).
+// Fallback padrão: URL relativa para comunicação via Nginx proxy.
+const API_BASE = window.API_BASE_URL || localStorage.getItem("API_BASE_URL") || "";

@@ -39,13 +39,23 @@ loginForm.addEventListener("submit", async (e) => {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ email, password })
         });
-        if (!res.ok) throw new Error("Credenciais inválidas");
+        if (!res.ok) {
+            let errorMsg = "Credenciais inválidas";
+            try {
+                const errorData = await res.json();
+                if (errorData && errorData.detail) {
+                    errorMsg = errorData.detail;
+                }
+            } catch (e) {}
+            throw new Error(errorMsg);
+        }
         const data = await res.json();
         localStorage.setItem("access_token", data.access_token);
         localStorage.setItem("admin_email", email);
         loginError.style.display = "none";
         loginScreen.classList.add("hidden");
     } catch (err) {
+        loginError.textContent = err.message;
         loginError.style.display = "block";
         console.error(err);
     }
