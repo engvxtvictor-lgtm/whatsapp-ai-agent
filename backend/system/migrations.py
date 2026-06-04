@@ -50,14 +50,32 @@ async def run_migrations() -> None:
         try:
             import bcrypt
             hashed_pw = bcrypt.hashpw("senha123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            
+            # 1. Update senhas vazias
             await session.execute(
                 text("UPDATE web_admins SET password_hash = :hash WHERE password_hash = ''"),
                 {"hash": hashed_pw}
             )
+            
+            # 2. Seed default admin if table is empty
+            result = await session.execute(text("SELECT COUNT(*) FROM web_admins"))
+            count = result.scalar()
+            if count == 0:
+                await session.execute(
+                    text("INSERT INTO web_admins (name, email, password_hash, role, avatar) VALUES (:name, :email, :hash, :role, :avatar)"),
+                    {
+                        "name": "Administrador Principal",
+                        "email": "admin@lumina.com",
+                        "hash": hashed_pw,
+                        "role": "Administrador",
+                        "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin"
+                    }
+                )
+                logger.info("Administrador padrão criado com sucesso (admin@lumina.com).")
+                
             await session.commit()
-            logger.info("Senhas vazias atualizadas para padrão.")
         except Exception as e:
             await session.rollback()
-            logger.error(f"Erro ao atualizar senhas vazias: {e}")
+            logger.error(f"Erro ao atualizar senhas/criar admin padrão: {e}")
 
     logger.info("Migrações concluídas.")
