@@ -308,11 +308,15 @@ async def get_admins(db: AsyncSession = Depends(get_db)):
     return admins
 
 
+import bcrypt
+
 @router.post("/admins", response_model=AdminSchema)
 async def create_admin(admin_data: AdminSchema, db: AsyncSession = Depends(get_db)):
+    hashed_pw = bcrypt.hashpw("senha123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
     new_admin = AdminWeb(
         name=admin_data.name,
         email=admin_data.email,
+        password_hash=hashed_pw,
         role=admin_data.role,
         avatar=admin_data.avatar or f"https://api.dicebear.com/7.x/avataaars/svg?seed={admin_data.name}"
     )
