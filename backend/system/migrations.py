@@ -46,4 +46,18 @@ async def run_migrations() -> None:
                 # Coluna já existe — ignorar silenciosamente
                 logger.debug(f"Migração já aplicada (ignorada): {description}")
 
+        # Post-migration: Atualizar senhas vazias para 'senha123'
+        try:
+            import bcrypt
+            hashed_pw = bcrypt.hashpw("senha123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+            await session.execute(
+                text("UPDATE web_admins SET password_hash = :hash WHERE password_hash = ''"),
+                {"hash": hashed_pw}
+            )
+            await session.commit()
+            logger.info("Senhas vazias atualizadas para padrão.")
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Erro ao atualizar senhas vazias: {e}")
+
     logger.info("Migrações concluídas.")
