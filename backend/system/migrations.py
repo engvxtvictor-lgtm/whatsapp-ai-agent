@@ -29,6 +29,11 @@ async def run_migrations() -> None:
                 "ALTER TABLE web_followups ADD COLUMN recurrence_interval INTEGER DEFAULT 0;",
                 "recurrence_interval em web_followups"
             ),
+            # v2: Adiciona hash de senha aos administradores
+            (
+                "ALTER TABLE web_admins ADD COLUMN password_hash VARCHAR DEFAULT '' NOT NULL;",
+                "password_hash em web_admins"
+            ),
         ]
 
         for sql, description in migrations:
