@@ -18,17 +18,20 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     body = await request.json()
     phone = body.get("phone", "")
     text = body.get("message", "").strip()
+    profile_pic = body.get("profile_pic", None)
 
     if not phone or not text:
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text)
+    bg.add_task(handle, phone, text, profile_pic)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str):
+async def handle(phone: str, text: str, profile_pic: str = None):
     logger.info(f"Mensagem de {phone[:6]}*** | '{text[:50]}'")
     session = await sess.get_session(phone)
+    if profile_pic:
+        session["profile_pic"] = profile_pic
 
     if session["escalated"]:
         return
@@ -135,7 +138,7 @@ async def handle(phone: str, text: str):
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service="Atendimento Humano",
-                        profile_pic=f"https://api.dicebear.com/7.x/adventurer/svg?seed={phone}",
+                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={phone}",
                         appointment_date=None,
                         upsell_success=False,
                         upsell_service=None,
@@ -235,7 +238,7 @@ async def handle(phone: str, text: str):
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service=service_name,
-                        profile_pic=f"https://api.dicebear.com/7.x/adventurer/svg?seed={session['name']}",
+                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={session.get('name', phone)}",
                         appointment_date=session["appointment_date"],
                         slot_id=slot_id,
                         slot_date=slot_date_obj,
@@ -253,6 +256,7 @@ async def handle(phone: str, text: str):
                     existing.name = session["name"]
                     existing.cpf = str(session["cpf"])[:14]
                     existing.service = service_name
+                    existing.profile_pic = session.get("profile_pic") or existing.profile_pic
                     existing.appointment_date = session["appointment_date"]
                     existing.slot_id = slot_id
                     existing.slot_date = slot_date_obj

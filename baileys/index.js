@@ -51,11 +51,12 @@ async function conectar() {
     if (!text) return
     console.log("Mensagem de " + phone + ": " + text)
     try {
+      const profile_pic = await sock.profilePictureUrl(msg.key.remoteJid, 'image').catch(() => null);
       const backendUrl = process.env.BACKEND_URL || "http://localhost:8000"
       await fetch(`${backendUrl}/webhook/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone, message: text })
+        body: JSON.stringify({ phone: phone, message: text, profile_pic: profile_pic })
       })
     } catch (e) {
       console.error("Erro webhook:", e.message)
