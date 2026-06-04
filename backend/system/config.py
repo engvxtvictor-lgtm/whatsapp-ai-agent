@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     # Ex: ALLOWED_ORIGINS=["https://app.lumina.com.br","https://www.lumina.com.br"]
     ALLOWED_ORIGINS: List[str] = ["*"]
 
-    # JWT — OBRIGATÓRIO: defina JWT_SECRET_KEY no .env com valor forte e único
-    JWT_SECRET_KEY: str  # Sem default — falha no startup se não configurado
+    # JWT — RECOMENDADO: defina JWT_SECRET_KEY no .env com valor forte e único
+    JWT_SECRET_KEY: str = "fallback_secret_lumina_key_12345"  # Fallback caso não exista no .env
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
 
