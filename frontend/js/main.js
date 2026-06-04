@@ -1,11 +1,12 @@
 // 8. CARREGAMENTO DOS DADOS
     async function loadData() {
         try {
-            const [clientsRes, adminsRes, examsRes, slotsRes] = await Promise.all([
-                fetch(`${API_BASE}/api/clients`),
-                fetch(`${API_BASE}/api/admins`),
-                fetch(`${API_BASE}/api/exams`),
-                fetch(`${API_BASE}/api/slots`)
+            const [clientsRes, adminsRes, examsRes, followupsRes, slotsRes] = await Promise.all([
+                fetch(`${API_BASE}/api/clients?t=${Date.now()}`),
+                fetch(`${API_BASE}/api/admins?t=${Date.now()}`),
+                fetch(`${API_BASE}/api/exams?t=${Date.now()}`),
+                fetch(`${API_BASE}/api/followups?t=${Date.now()}`),
+                fetch(`${API_BASE}/api/slots?t=${Date.now()}`)
             ]);
 
             if (clientsRes.ok && adminsRes.ok && examsRes.ok && slotsRes.ok) {
