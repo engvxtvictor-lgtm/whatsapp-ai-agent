@@ -19,7 +19,8 @@ async function conectar() {
     auth: state,
     printQRInTerminal: false,
     keepAliveIntervalMs: 10000,
-    logger: require("pino")({ level: "silent" }),
+    browser: ["Ubuntu", "Chrome", "20.0.04"],
+    logger: require("pino")({ level: "error" }),
   })
   sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
@@ -32,8 +33,8 @@ async function conectar() {
     }
     if (connection === "close") {
       isConnecting = false
-      const code = new Boom(lastDisconnect && lastDisconnect.error).output.statusCode
-      if (code === DisconnectReason.loggedOut) {
+      const statusCode = lastDisconnect?.error?.output?.statusCode
+      if (statusCode === DisconnectReason.loggedOut) {
         fs.rmSync("./auth", { recursive: true, force: true })
         setTimeout(conectar, 2000)
       } else {
