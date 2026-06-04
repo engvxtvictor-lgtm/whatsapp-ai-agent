@@ -322,6 +322,36 @@ async def create_admin(admin_data: AdminSchema, db: AsyncSession = Depends(get_d
     return new_admin
 
 
+@router.put("/admins/{admin_id}", response_model=AdminSchema)
+async def update_admin(admin_id: int, admin_data: AdminSchema, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AdminWeb).where(AdminWeb.id == admin_id))
+    admin = result.scalars().first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Administrador nao encontrado.")
+    
+    admin.name = admin_data.name
+    admin.email = admin_data.email
+    admin.role = admin_data.role
+    if admin_data.avatar:
+        admin.avatar = admin_data.avatar
+        
+    await db.commit()
+    await db.refresh(admin)
+    return admin
+
+
+@router.delete("/admins/{admin_id}")
+async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AdminWeb).where(AdminWeb.id == admin_id))
+    admin = result.scalars().first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Administrador nao encontrado.")
+    
+    await db.delete(admin)
+    await db.commit()
+    return {"status": "deleted", "id": admin_id}
+
+
 # Rota de Envio de Campanhas
 @router.post("/campaigns")
 async def send_campaign(campaign: CampaignSchema, bg: BackgroundTasks, db: AsyncSession = Depends(get_db)):

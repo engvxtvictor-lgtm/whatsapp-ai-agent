@@ -127,6 +127,10 @@ O projeto está estruturado da seguinte forma:
 * **Função**: Centraliza as chamadas de API externa de saída enviadas ao gateway Baileys.
 * **Notificação**: Ao escalar a conversa para um atendente, dispara um alerta diretamente para o número configurado em `settings.HUMAN_PHONE` com a mensagem do cliente.
 
+### 8. Painel Administrativo e CRM CRM
+* **Gestão de Equipe**: CRUD completo de administradores e usuários do painel (Adicionar, Editar e Remover).
+* **Sincronização de Perfil (WhatsApp)**: O gateway intercepta ativamente as mensagens para capturar e baixar as **fotos reais do perfil do WhatsApp** dos pacientes em tempo real, enriquecendo a experiência visual da clínica no banco de dados.
+
 ---
 
 ## 🚦 Algoritmo de Resposta e Fluxo de Decisões
