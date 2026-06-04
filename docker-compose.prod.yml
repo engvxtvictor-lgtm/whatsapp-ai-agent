@@ -39,8 +39,6 @@ services:
       dockerfile: backend/Dockerfile
     container_name: lumina-backend-prod
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:8000:8000"
     env_file:
       - .env
     environment:
@@ -60,8 +58,6 @@ services:
       dockerfile: Dockerfile
     container_name: lumina-baileys-prod
     restart: unless-stopped
-    ports:
-      - "127.0.0.1:3000:3000"
     environment:
       - BACKEND_URL=http://backend:8000
     volumes:
