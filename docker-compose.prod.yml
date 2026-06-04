@@ -10,9 +10,6 @@ services:
       - POSTGRES_DB=${DB_NAME:-agent_db}
       - POSTGRES_USER=${DB_USER:-postgres}
       - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
-    # Apenas expõe a porta localmente por segurança (evita acesso externo direto)
-    ports:
-      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data_prod:/var/lib/postgresql/data
       - ./backend/system/init.sql:/docker-entrypoint-initdb.d/init.sql
@@ -27,9 +24,6 @@ services:
     image: redis:7-alpine
     container_name: lumina-redis-prod
     restart: unless-stopped
-    # Apenas expõe a porta localmente por segurança
-    ports:
-      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data_prod:/data
     healthcheck:
