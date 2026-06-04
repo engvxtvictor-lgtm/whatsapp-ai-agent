@@ -61,16 +61,15 @@ async def run_migrations() -> None:
             result = await session.execute(text("SELECT COUNT(*) FROM web_admins"))
             count = result.scalar()
             if count == 0:
-                await session.execute(
-                    text("INSERT INTO web_admins (name, email, password_hash, role, avatar) VALUES (:name, :email, :hash, :role, :avatar)"),
-                    {
-                        "name": "Administrador Principal",
-                        "email": "admin@lumina.com",
-                        "hash": hashed_pw,
-                        "role": "Administrador",
-                        "avatar": "https://api.dicebear.com/7.x/avataaars/svg?seed=Admin"
-                    }
+                from backend.system.models.web_models import AdminWeb
+                admin = AdminWeb(
+                    name="Administrador Principal",
+                    email="admin@lumina.com",
+                    password_hash=hashed_pw,
+                    role="Administrador",
+                    avatar="https://api.dicebear.com/7.x/avataaars/svg?seed=Admin"
                 )
+                session.add(admin)
                 logger.info("Administrador padrão criado com sucesso (admin@lumina.com).")
                 
             await session.commit()
