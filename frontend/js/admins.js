@@ -44,10 +44,11 @@
                 allAdmins = allAdmins.filter(a => a.id !== id);
                 renderAdmins();
             } else {
-                alert("Erro ao excluir administrador.");
+                const errorText = await response.text();
+                alert(`Erro ao excluir administrador. Status: ${response.status}\nDetalhes: ${errorText}`);
             }
         } catch (error) {
-            console.error("Erro delete admin:", error);
-            alert("Erro de conexão com o servidor.");
+            console.error("Erro:", error);
+            alert(`Erro na requisição: ${error.message}`);
         }
     };

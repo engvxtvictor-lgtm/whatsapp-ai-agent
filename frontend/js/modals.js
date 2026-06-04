@@ -113,10 +113,11 @@
                 renderAdmins();
                 closeAdminModal();
             } else {
-                alert(`Erro ao ${isEdit ? "editar" : "cadastrar"} administrador.`);
+                const errorText = await response.text();
+                alert(`Erro ao salvar administrador. Status: ${response.status}\nDetalhes: ${errorText}`);
             }
         } catch (error) {
-            console.error("Erro form admin:", error);
-            alert("Erro de conexão com o servidor.");
+            console.error("Erro:", error);
+            alert(`Erro na requisição: ${error.message}`);
         }
     });
