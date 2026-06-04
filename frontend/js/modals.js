@@ -67,37 +67,56 @@
     });
 
     // Novo Administrador Modal
-    btnAddAdminModal.addEventListener("click", () => modalAdmin.classList.add("active"));
-    btnCloseAdminModal.addEventListener("click", () => modalAdmin.classList.remove("active"));
-    btnCancelAdminModal.addEventListener("click", () => modalAdmin.classList.remove("active"));
+    btnAddAdminModal.addEventListener("click", () => {
+        document.getElementById("admin-id").value = "";
+        document.getElementById("admin-modal-title").innerText = "Adicionar Administrador";
+        formAddAdmin.reset();
+        modalAdmin.classList.add("active");
+    });
+    const closeAdminModal = () => {
+        modalAdmin.classList.remove("active");
+        formAddAdmin.reset();
+        document.getElementById("admin-id").value = "";
+    };
+    btnCloseAdminModal.addEventListener("click", closeAdminModal);
+    btnCancelAdminModal.addEventListener("click", closeAdminModal);
 
     formAddAdmin.addEventListener("submit", async (e) => {
         e.preventDefault();
 
+        const id = document.getElementById("admin-id").value;
         const name = document.getElementById("admin-name").value;
         const email = document.getElementById("admin-email").value;
         const role = document.getElementById("admin-role").value;
 
         const payload = { name, email, role };
+        const isEdit = !!id;
 
         try {
-            const response = await fetch(`${API_BASE}/api/admins`, {
-                method: "POST",
+            const url = isEdit ? `${API_BASE}/api/admins/${id}` : `${API_BASE}/api/admins`;
+            const method = isEdit ? "PUT" : "POST";
+
+            const response = await fetch(url, {
+                method: method,
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload)
             });
 
             if (response.ok) {
-                const newAdmin = await response.json();
-                allAdmins.unshift(newAdmin);
+                const savedAdmin = await response.json();
+                if (isEdit) {
+                    const index = allAdmins.findIndex(a => a.id == id);
+                    if (index !== -1) allAdmins[index] = savedAdmin;
+                } else {
+                    allAdmins.unshift(savedAdmin);
+                }
                 renderAdmins();
-                formAddAdmin.reset();
-                modalAdmin.classList.remove("active");
+                closeAdminModal();
             } else {
-                alert("Erro ao cadastrar administrador.");
+                alert(`Erro ao ${isEdit ? "editar" : "cadastrar"} administrador.`);
             }
         } catch (error) {
-            console.error("Erro cadastro admin:", error);
+            console.error("Erro form admin:", error);
             alert("Erro de conexão com o servidor.");
         }
     });

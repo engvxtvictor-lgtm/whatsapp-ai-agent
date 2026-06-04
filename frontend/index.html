@@ -512,10 +512,11 @@
     <div class="modal" id="modal-admin">
         <div class="modal-content">
             <div class="modal-header">
-                <h3><i class="fa-solid fa-user-shield gold-text"></i> Adicionar Administrador</h3>
+                <h3><i class="fa-solid fa-user-shield gold-text"></i> <span id="admin-modal-title">Adicionar Administrador</span></h3>
                 <button class="modal-close" id="btn-close-admin-modal"><i class="fa-solid fa-xmark"></i></button>
             </div>
             <form id="form-add-admin">
+                <input type="hidden" id="admin-id">
                 <div class="modal-body">
                     <div class="form-group">
                         <label for="admin-name">Nome Completo</label>
