@@ -88,8 +88,13 @@
         const name = document.getElementById("admin-name").value;
         const email = document.getElementById("admin-email").value;
         const role = document.getElementById("admin-role").value;
+        const passwordInput = document.getElementById("admin-password");
+        const password = passwordInput ? passwordInput.value : "";
 
         const payload = { name, email, role };
+        if (password) {
+            payload.password = password;
+        }
         const isEdit = !!id;
 
         try {

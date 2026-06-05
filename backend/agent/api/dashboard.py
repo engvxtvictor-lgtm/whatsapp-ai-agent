@@ -13,6 +13,7 @@ class AdminSchema(BaseModel):
     id: Optional[int] = None
     name: str
     email: str
+    password: Optional[str] = None
     role: str
     avatar: Optional[str] = None
     
@@ -67,6 +68,7 @@ class AdminSchema(BaseModel):
     id: Optional[int] = None
     name: str
     email: str
+    password: Optional[str] = None
     role: str
     avatar: Optional[str] = None
 
@@ -312,7 +314,9 @@ import bcrypt
 
 @router.post("/admins", response_model=AdminSchema)
 async def create_admin(admin_data: AdminSchema, db: AsyncSession = Depends(get_db)):
-    hashed_pw = bcrypt.hashpw("senha123".encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+    from backend.system.auth import get_password_hash
+    password = admin_data.password if admin_data.password else "senha123"
+    hashed_pw = get_password_hash(password)
     new_admin = AdminWeb(
         name=admin_data.name,
         email=admin_data.email,
@@ -328,6 +332,7 @@ async def create_admin(admin_data: AdminSchema, db: AsyncSession = Depends(get_d
 
 @router.put("/admins/{admin_id}", response_model=AdminSchema)
 async def update_admin(admin_id: int, admin_data: AdminSchema, db: AsyncSession = Depends(get_db)):
+    from backend.system.auth import get_password_hash
     result = await db.execute(select(AdminWeb).where(AdminWeb.id == admin_id))
     admin = result.scalars().first()
     if not admin:
@@ -338,6 +343,8 @@ async def update_admin(admin_id: int, admin_data: AdminSchema, db: AsyncSession 
     admin.role = admin_data.role
     if admin_data.avatar:
         admin.avatar = admin_data.avatar
+    if admin_data.password:
+        admin.password_hash = get_password_hash(admin_data.password)
         
     await db.commit()
     await db.refresh(admin)
