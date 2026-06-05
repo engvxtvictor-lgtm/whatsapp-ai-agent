@@ -28,7 +28,8 @@ async function conectar() {
       qrcode.generate(qr, { small: true })
     }
     if (connection === "open") {
-      console.log("WhatsApp conectado!")
+      const userPhone = sock.user?.id ? sock.user.id.split(":")[0].split("@")[0] : "Desconhecido";
+      console.log("✅ WhatsApp conectado! O número do robô é: +" + userPhone);
       isConnecting = false
     }
     if (connection === "close") {
