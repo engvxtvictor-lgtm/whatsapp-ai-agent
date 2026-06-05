@@ -47,6 +47,14 @@ async function conectar() {
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0]
     if (!msg.message || msg.key.fromMe) return
+    
+    // Marca a mensagem como lida (tracinhos azuis)
+    try {
+      await sock.readMessages([msg.key]);
+    } catch (err) {
+      console.error("Erro ao marcar como lida:", err);
+    }
+    
     const phone = msg.key.remoteJid.replace("@s.whatsapp.net", "")
     const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || ""
     if (!text) return
