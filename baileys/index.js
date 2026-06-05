@@ -69,7 +69,8 @@ app.post("/send", async (req, res) => {
   const { phone, text } = req.body
   if (!sock) return res.status(503).json({ error: "Nao conectado" })
   try {
-    await sock.sendMessage(phone + "@s.whatsapp.net", { text: text })
+    const jid = phone.includes("@") ? phone : phone + "@s.whatsapp.net"
+    await sock.sendMessage(jid, { text: text })
     res.json({ ok: true })
   } catch (e) {
     res.status(500).json({ error: e.message })
@@ -84,7 +85,8 @@ app.post("/send-document", async (req, res) => {
     const response = await fetch(url)
     if (!response.ok) throw new Error(`Falha ao baixar documento: ${response.status}`)
     const buffer = Buffer.from(await response.arrayBuffer())
-    await sock.sendMessage(phone + "@s.whatsapp.net", {
+    const jid = phone.includes("@") ? phone : phone + "@s.whatsapp.net"
+    await sock.sendMessage(jid, {
       document: buffer,
       mimetype: "application/pdf",
       fileName: filename || "tabela_servicos.pdf",
