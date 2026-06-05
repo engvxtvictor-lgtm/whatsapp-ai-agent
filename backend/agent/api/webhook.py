@@ -167,8 +167,11 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         # Envia o PDF de serviços na primeira mensagem do paciente
         pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
         if is_first_message and os.path.exists(pdf_path):
-            # Usa o nome interno do container (backend) para o Baileys conseguir baixar na mesma rede Docker
-            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://backend:8000")
+            # Resolve o problema do docker-compose injetar localhost
+            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
+                base_url = "http://backend:8000"
+                
             pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
             logger.info(f"Enviando PDF de serviços para {phone[:6]}*** via {pdf_url}")
             await whatsapp.send_document(
