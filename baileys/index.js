@@ -55,7 +55,8 @@ async function conectar() {
       console.error("Erro ao marcar como lida:", err);
     }
     
-    const phone = msg.key.remoteJid.replace("@s.whatsapp.net", "")
+    const phone = msg.key.remoteJid.split("@")[0]
+    const pushName = msg.pushName || ""
     const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || ""
     if (!text) return
     console.log("Mensagem de " + phone + ": " + text)
@@ -65,7 +66,7 @@ async function conectar() {
       await fetch(`${backendUrl}/webhook/message`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phone: phone, message: text, profile_pic: profile_pic })
+        body: JSON.stringify({ phone: phone, message: text, profile_pic: profile_pic, push_name: pushName })
       })
     } catch (e) {
       console.error("Erro webhook:", e.message)

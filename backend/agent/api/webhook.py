@@ -19,19 +19,22 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     phone = body.get("phone", "")
     text = body.get("message", "").strip()
     profile_pic = body.get("profile_pic", None)
+    push_name = body.get("push_name", "")
 
     if not phone or not text:
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text, profile_pic)
+    bg.add_task(handle, phone, text, profile_pic, push_name)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str, profile_pic: str = None):
+async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = ""):
     logger.info(f"Mensagem de {phone[:6]}*** | '{text[:50]}'")
     session = await sess.get_session(phone)
     if profile_pic:
         session["profile_pic"] = profile_pic
+    if push_name and not session.get("name"):
+        session["name"] = push_name
 
     if session["escalated"]:
         return
