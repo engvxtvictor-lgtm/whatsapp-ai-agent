@@ -85,11 +85,11 @@
         e.preventDefault();
 
         const id = document.getElementById("admin-id").value;
-        const name = document.getElementById("admin-name").value;
-        const email = document.getElementById("admin-email").value;
+        const name = document.getElementById("admin-name").value.trim();
+        const email = document.getElementById("admin-email").value.trim();
         const role = document.getElementById("admin-role").value;
         const passwordInput = document.getElementById("admin-password");
-        const password = passwordInput ? passwordInput.value : "";
+        const password = passwordInput ? passwordInput.value.trim() : "";
 
         const payload = { name, email, role };
         if (password) {
