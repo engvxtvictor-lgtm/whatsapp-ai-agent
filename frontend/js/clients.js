@@ -256,8 +256,13 @@
                 }
                 
                 if (client.needs_human) {
-                    // Open wa.me link directly
-                    window.open(`https://wa.me/${client.phone}`, "_blank");
+                    // Prevent opening wa.me for @lid since WhatsApp doesn't support it
+                    if (client.phone.includes("@lid")) {
+                        alert("Atenção: Este cliente está usando um número oculto (Meta LID). O WhatsApp Web não permite abrir conversas com IDs ocultos via link. Por favor, responda a este cliente diretamente pelo aplicativo oficial do WhatsApp (onde a conversa já está iniciada).");
+                    } else {
+                        // Open wa.me link directly
+                        window.open(`https://wa.me/${client.phone}`, "_blank");
+                    }
                     
                     // Resolve needs_human on the backend
                     try {
