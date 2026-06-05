@@ -55,7 +55,7 @@ async function conectar() {
       console.error("Erro ao marcar como lida:", err);
     }
     
-    const phone = msg.key.remoteJid.split("@")[0]
+    const phone = msg.key.remoteJid.replace("@s.whatsapp.net", "")
     const pushName = msg.pushName || ""
     const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || ""
     if (!text) return
