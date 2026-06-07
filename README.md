@@ -110,26 +110,23 @@ O projeto está estruturado da seguinte forma:
 * **Mecanismo**: Realiza comparação de palavras-chave extraídas da mensagem com as palavras-chave mapeadas de cada resposta cadastrada. Se o score de similaridade for alto o suficiente (`>= 0.6`), retorna uma resposta imediata sem onerar a API do Groq.
 * **RAG**: Caso a resposta não atinja o threshold direto, este serviço fornece os **top 3 FAQ mais próximos** como dados de contexto enriquecidos para o prompt da IA.
 
-### 5. Camada Groq Llama 3 ([ai_service.py](file:///c:/GitHub/whatsapp-ai-agent/app/services/ai_service.py))
-* **Função**: Conversa com o Groq usando o modelo especificado (`settings.GROQ_MODEL`).
-* **Prompt de Sistema**: Configura o comportamento geral do assistente em português e força o retorno da linha `CONFIANÇA: [0 a 100]` no final de cada resposta.
-* **Confiança**: Faz o parse dessa nota retornada e valida se ela atende ao limiar configurado (`AI_CONFIDENCE_THRESHOLD`).
+### 5. Camada de Inteligência e Redundância ([ai_service.py](file:///c:/GitHub/whatsapp-ai-agent/backend/agent/services/ai_service.py))
+* **Função**: Conversa com a IA Primária (ex: OpenAI) e gerencia o fallback.
+* **Redundância (Dedo no Gatilho)**: Implementa um mecanismo de corrida (`asyncio.wait`). Se a IA Primária não responder dentro de `AI_TIMEOUT_SECONDS`, o sistema dispara simultaneamente uma requisição para a IA Secundária (Gemini/Groq). O primeiro que responder vence, garantindo que o bot nunca deixe o paciente esperando.
+* **Confiança e Metadados**: Extrai dados estruturados (nome, cpf, serviço, data) e avalia a confiança da resposta.
 
-### 6. Gerenciamento de Estado no Redis ([session.py](file:///c:/GitHub/whatsapp-ai-agent/app/services/session.py))
+### 6. Gerenciamento de Estado no Redis ([session.py](file:///c:/GitHub/whatsapp-ai-agent/backend/agent/services/session.py))
 * **Função**: Utiliza Redis (`aioredis`) para manter o estado persistente do usuário.
-* **Histórico**: Armazena as últimas 20 mensagens enviadas/recebidas para prover contexto de conversação contínuo ao Groq.
-* **Parâmetros Mantidos**:
-  * `history`: Histórico de conversação formatado.
-  * `ai_attempts`: Contador de tentativas que a IA respondeu sem total confiança.
-  * `escalated`: Flag booleana que indica se o usuário já foi transferido para um humano (se `true`, novas mensagens são sumariamente ignoradas pelo robô).
+* **Histórico**: Armazena as últimas mensagens enviadas/recebidas para prover contexto de conversação contínuo.
+* **Escalada para Humano**: Flag booleana que indica se o usuário já foi transferido para um humano. Se o gatilho de atendimento humano for acionado, o paciente aparece imediatamente no painel piscando com a flag vermelha `needs_human=True` e a IA se cala.
 
-### 7. Envio e Escalação ([whatsapp.py](file:///c:/GitHub/whatsapp-ai-agent/app/services/whatsapp.py))
+### 7. Envio e Escalação ([whatsapp.py](file:///c:/GitHub/whatsapp-ai-agent/backend/agent/services/whatsapp.py))
 * **Função**: Centraliza as chamadas de API externa de saída enviadas ao gateway Baileys.
 * **Notificação**: Ao escalar a conversa para um atendente, dispara um alerta diretamente para o número configurado em `settings.HUMAN_PHONE` com a mensagem do cliente.
 
-### 8. Painel Administrativo e CRM CRM
-* **Gestão de Equipe**: CRUD completo de administradores e usuários do painel (Adicionar, Editar e Remover).
-* **Sincronização de Perfil (WhatsApp)**: O gateway intercepta ativamente as mensagens para capturar e baixar as **fotos reais do perfil do WhatsApp** dos pacientes em tempo real, enriquecendo a experiência visual da clínica no banco de dados.
+### 8. Painel Administrativo e CRM
+* **Gestão de Equipe**: CRUD completo de administradores e usuários do painel.
+* **Monitoramento em Tempo Real**: Os pacientes que solicitam transferência para um atendente são sinalizados visualmente no painel CRM (borda dourada/vermelha), permitindo resposta imediata da equipe da clínica.
 
 ---
 
