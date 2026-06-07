@@ -82,23 +82,31 @@ def validate_output_guardrail(response: str) -> str:
     return "\n".join(lines).strip()
 
 
+def _format_cpf(digits: str) -> str:
+    """Formata 11 dígitos como CPF: XXX.XXX.XXX-XX"""
+    d = digits.zfill(11)
+    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:11]}"
+
+
 def extract_and_censor_cpf(text: str) -> tuple[str, str | None]:
-    """Busca CPF na mensagem. Retorna (mensagem_censurada, cpf_limpo)."""
+    """Busca CPF na mensagem. Retorna (mensagem_censurada, cpf_formatado)."""
     cpf_pattern = r"\b(\d{3})\.?(\d{3})\.?(\d{3})-?(\d{2})\b"
     match = re.search(cpf_pattern, text)
     if match:
         full_cpf = "".join(match.groups())
+        formatted = _format_cpf(full_cpf)
         censored = f"{full_cpf[:3]}.{full_cpf[3:5]}*.***-**"
         censored_text = re.sub(cpf_pattern, censored, text)
-        return censored_text, full_cpf
+        return censored_text, formatted
 
     pure_pattern = r"\b\d{11}\b"
     pure_match = re.search(pure_pattern, text)
     if pure_match:
         full_cpf = pure_match.group(0)
+        formatted = _format_cpf(full_cpf)
         censored = f"{full_cpf[:3]}.{full_cpf[3:5]}*.***-**"
         censored_text = re.sub(pure_pattern, censored, text)
-        return censored_text, full_cpf
+        return censored_text, formatted
 
     return text, None
 
