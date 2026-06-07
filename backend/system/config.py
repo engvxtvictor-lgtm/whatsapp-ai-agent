@@ -8,6 +8,11 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: Optional[str] = None
     OPENAI_API_URL: str = "https://api.openai.com/v1"
     OPENAI_MODEL: str = "gpt-4o-mini"
+    
+    # Agente de Segurança / Redundância
+    SECONDARY_API_KEY: Optional[str] = None
+    SECONDARY_AI_MODEL: str = "gemini/gemini-1.5-flash"
+    AI_TIMEOUT_SECONDS: int = 15
 
     AI_CONFIDENCE_THRESHOLD: float = 0.70
 

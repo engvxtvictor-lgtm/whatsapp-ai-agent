@@ -1,6 +1,7 @@
 import re
 import json
 import httpx
+import asyncio
 from sqlalchemy import select
 from backend.system.config import settings
 from backend.system.logger import logger
@@ -126,6 +127,36 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
     }
     payload = {
         "model": settings.OPENAI_MODEL,
+        "messages": [{"role": "system", "content": system_prompt}] + messages,
+        "temperature": 0.7,
+        "max_tokens": 350,
+    }
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.post(url, headers=headers, json=payload)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"]
+
+
+async def _call_secondary_ai(system_prompt: str, messages: list) -> str:
+    """Chama a API Secundária (Redundância). Usa endpoint compatível com OpenAI."""
+    if not settings.SECONDARY_API_KEY or settings.SECONDARY_API_KEY == "sua_chave_gemini_ou_groq":
+        raise Exception("SECONDARY_API_KEY não configurada.")
+
+    # Se a chave começar com gsk_, é Groq. Se for AIza, é Gemini
+    if settings.SECONDARY_API_KEY.startswith("gsk_"):
+        url = "https://api.groq.com/openai/v1/chat/completions"
+    elif settings.SECONDARY_API_KEY.startswith("AIza"):
+        url = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    else:
+        url = "https://openrouter.ai/api/v1/chat/completions"
+
+    headers = {
+        "Authorization": f"Bearer {settings.SECONDARY_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "model": settings.SECONDARY_AI_MODEL,
         "messages": [{"role": "system", "content": system_prompt}] + messages,
         "temperature": 0.7,
         "max_tokens": 350,
@@ -495,14 +526,46 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
 
     messages = history + [{"role": "user", "content": message}]
 
-    # 4. Tenta chamar a OpenAI
+    # 4. Orquestração da Redundância (Fallback por Timeout)
     text = None
+    primary_task = asyncio.create_task(_call_openai(system, messages))
+    
     try:
-        logger.info(f"Chamando OpenAI ({settings.OPENAI_MODEL})...")
-        text = await _call_openai(system, messages)
-        logger.info("OpenAI respondeu com sucesso.")
+        logger.info(f"Chamando Agente Primário ({settings.OPENAI_MODEL}) com timeout de {settings.AI_TIMEOUT_SECONDS}s...")
+        # Espera o Agente Primário até o tempo limite
+        text = await asyncio.wait_for(primary_task, timeout=settings.AI_TIMEOUT_SECONDS)
+        logger.info("Agente Primário respondeu com sucesso dentro do tempo limite.")
+    except asyncio.TimeoutError:
+        logger.warning(f"⏰ Agente Primário estourou o tempo limite de {settings.AI_TIMEOUT_SECONDS}s! Disparando Agente Secundário (Dedo no Gatilho).")
+        # Primário engasgou. Deixamos ele rodando no background e disparamos o Secundário.
+        secondary_task = asyncio.create_task(_call_secondary_ai(system, messages))
+        
+        # Agora faremos uma corrida: quem terminar primeiro ganha (Primário atrasado vs Secundário novo)
+        done, pending = await asyncio.wait(
+            [primary_task, secondary_task],
+            return_when=asyncio.FIRST_COMPLETED
+        )
+        
+        # Pega o resultado do vencedor
+        winner = done.pop()
+        try:
+            text = winner.result()
+            if winner == primary_task:
+                logger.info("Agente Primário finalmente respondeu e venceu a corrida do atraso.")
+            else:
+                logger.info(f"Agente Secundário ({settings.SECONDARY_AI_MODEL}) salvou o dia!")
+        except Exception as e:
+            logger.warning(f"Erro no vencedor da corrida: {e}")
+            
+        # Cancela o perdedor para economizar recursos
+        for p in pending:
+            p.cancel()
     except Exception as e:
-        logger.warning(f"Erro ao chamar OpenAI: {e}. Usando resposta simulada.")
+        logger.warning(f"Erro imediato no Agente Primário: {e}. Disparando Agente Secundário.")
+        try:
+            text = await _call_secondary_ai(system, messages)
+        except Exception as sec_e:
+            logger.error(f"Erro no Agente Secundário: {sec_e}")
 
     # 5. Fallback simulado se OpenAI não disponível
     if text is None:
