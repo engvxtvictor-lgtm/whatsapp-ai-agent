@@ -234,11 +234,12 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n📄 Segue nossa tabela completa de serviços e valores!"
             )
 
-    # 3. Registro Automático se todos os dados essenciais estiverem preenchidos
-    if (session.get("name") and
-        session.get("cpf") and
-        session.get("service") and
-        session.get("appointment_date")):
+    # 3. Registro Automático se os dados essenciais estiverem preenchidos (CPF é opcional)
+    has_name = bool(session.get("name"))
+    has_service = bool(session.get("service"))
+    has_date = bool(session.get("appointment_date"))
+    logger.info(f"[REGISTRO] name={session.get('name')!r} service={session.get('service')!r} date={session.get('appointment_date')!r} cpf={'****' if session.get('cpf') else None}")
+    if has_name and has_service and has_date:
         async with AsyncSession() as db:
             try:
                 stmt = select(ClientWeb).where(ClientWeb.phone == phone)
@@ -290,7 +291,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                     logger.info(f"Registrando agendamento de {session['name']}...")
                     new_client = ClientWeb(
                         name=session["name"],
-                        cpf=str(session["cpf"])[:14],
+                        cpf=str(session.get("cpf") or "000.000.000-00")[:14],
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service=service_name,
@@ -310,7 +311,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 else:
                     logger.info(f"Atualizando agendamento para {phone}...")
                     existing.name = session["name"]
-                    existing.cpf = str(session["cpf"])[:14]
+                    existing.cpf = str(session.get("cpf") or existing.cpf or "000.000.000-00")[:14]
                     existing.service = service_name
                     existing.profile_pic = session.get("profile_pic") or existing.profile_pic
                     existing.appointment_date = session["appointment_date"]
