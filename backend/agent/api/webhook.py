@@ -44,6 +44,42 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     # Salva o JID de resposta na sessão para envios futuros
     session["phone_for_reply"] = phone_for_reply
 
+    # Verifica se o usuário quer reiniciar a conversa
+    RESET_KEYWORDS = ["recomeça", "recomeca", "reiniciar", "reinicia", "zera", "zerar", "começa de novo", "comeca de novo", "restart", "reset", "novo atendimento", "começar de novo"]
+    text_lower_reset = text.lower().strip()
+    is_reset = any(kw in text_lower_reset for kw in RESET_KEYWORDS)
+
+    if is_reset:
+        await sess.delete_session(phone)
+        new_session = {
+            "phone": phone,
+            "history": [],
+            "ai_attempts": 0,
+            "escalated": False,
+            "name": push_name or None,
+            "cpf": None,
+            "service": None,
+            "appointment_date": None,
+            "upsell_success": False,
+            "upsell_service": None,
+            "source": "whatsapp",
+            "profile_pic": profile_pic or None,
+            "phone_for_reply": phone_for_reply,
+        }
+        await sess.save_session(phone, new_session)
+        reset_msg = "Tudo bem! 😊 Vou começar um novo atendimento para você. Acabei de enviar novamente o nosso catálogo logo abaixo. Qual serviço chamou sua atenção?"
+        await whatsapp.send_message(phone, reset_msg, reply_jid=phone_for_reply)
+        # Reenvia o PDF
+        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
+        if os.path.exists(pdf_path):
+            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
+                base_url = "http://backend:8000"
+            pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
+            await whatsapp.send_document(phone=phone, pdf_url=pdf_url, filename=settings.SERVICES_PDF_FILENAME, caption="📄 Segue nossa tabela completa de serviços e valores!", reply_jid=phone_for_reply)
+        logger.info(f"Sessão reiniciada por comando do usuário: {phone[:6]}***")
+        return
+
     if session["escalated"]:
         return
 
