@@ -199,6 +199,10 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 logger.info(f"Cliente {phone} marcado para atendimento humano no banco.")
             except Exception as e:
                 logger.error(f"Erro ao salvar necessidade de atendimento humano: {e}")
+        
+        # Salva a sessão no Redis antes de retornar, para garantir que 'escalated=True' persista
+        await sess.save_session(phone, session)
+        return
     else:
         # Enviar resposta da IA
         sent_response = response
