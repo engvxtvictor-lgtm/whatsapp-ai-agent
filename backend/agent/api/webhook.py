@@ -17,6 +17,7 @@ router = APIRouter(prefix="/webhook")
 async def receive_message(request: Request, bg: BackgroundTasks):
     body = await request.json()
     phone = body.get("phone", "")
+    phone_for_reply = body.get("phone_for_reply", "") or phone  # JID completo para resposta (@lid ou @s.whatsapp.net)
     text = body.get("message", "").strip()
     profile_pic = body.get("profile_pic", None)
     push_name = body.get("push_name", "")
@@ -24,17 +25,23 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     if not phone or not text:
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text, profile_pic, push_name)
+    bg.add_task(handle, phone, text, profile_pic, push_name, phone_for_reply)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = ""):
-    logger.info(f"Mensagem de {phone[:6]}*** | '{text[:50]}'")
+async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = "", phone_for_reply: str = None):
+    # phone_for_reply: JID completo para enviar respostas (pode ser @lid ou @s.whatsapp.net)
+    # phone: número limpo sem sufixo, usado como chave de sessão e no banco de dados
+    if not phone_for_reply:
+        phone_for_reply = phone
+    logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | '{text[:50]}'")
     session = await sess.get_session(phone)
     if profile_pic:
         session["profile_pic"] = profile_pic
     if push_name and not session.get("name"):
         session["name"] = push_name
+    # Salva o JID de resposta na sessão para envios futuros
+    session["phone_for_reply"] = phone_for_reply
 
     if session["escalated"]:
         return
@@ -57,7 +64,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     # 1. tenta FAQ usando o texto censurado
     answer, score = faq_service.search_faq(censored_text)
     if answer and score >= 0.6:
-        await whatsapp.send_message(phone, answer)
+        await whatsapp.send_message(phone, answer, reply_jid=session.get("phone_for_reply"))
         session = await sess.add_to_history(session, "user", censored_text)
         session = await sess.add_to_history(session, "assistant", answer)
         await sess.save_session(phone, session)
@@ -122,7 +129,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     session = await sess.add_to_history(session, "user", censored_text)
 
     if needs_human_trigger:
-        await whatsapp.send_escalation(phone)
+        await whatsapp.send_escalation(phone, reply_jid=session.get("phone_for_reply"))
         session = await sess.add_to_history(session, "assistant", "Vou te transferir para um atendente agora. Aguarde um momento! 🙏")
         await whatsapp.notify_agent(phone, censored_text)
         session["escalated"] = True
@@ -161,7 +168,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         if confidence < settings.AI_CONFIDENCE_THRESHOLD:
             sent_response += "\n\n_Caso queira falar com um atendente, é só pedir!_"
             
-        await whatsapp.send_message(phone, sent_response)
+        await whatsapp.send_message(phone, sent_response, reply_jid=session.get("phone_for_reply"))
         session = await sess.add_to_history(session, "assistant", sent_response)
 
         # Envia o PDF de serviços na primeira mensagem do paciente
@@ -178,7 +185,8 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 phone=phone,
                 pdf_url=pdf_url,
                 filename=settings.SERVICES_PDF_FILENAME,
-                caption="📄 Segue nossa tabela completa de serviços e valores!"
+                caption="📄 Segue nossa tabela completa de serviços e valores!",
+                reply_jid=session.get("phone_for_reply")
             )
             session = await sess.add_to_history(
                 session, 
