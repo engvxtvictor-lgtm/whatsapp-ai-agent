@@ -114,6 +114,11 @@ async function conectar() {
 
     console.log(`[debounce] Processando ${buf.texts.length} msg(s) de ${phone}: "${combinedText.slice(0,60)}"`)
 
+    // Mostra "digitando..." enquanto processa
+    try {
+      await sock.sendPresenceUpdate("composing", buf.rawJid)
+    } catch (_) {}
+
     try {
       let profile_pic = null
       try {
@@ -136,6 +141,8 @@ async function conectar() {
       })
     } catch (e) {
       console.error("Erro webhook (debounce):", e.message)
+      // Para o "digitando..." em caso de erro
+      try { await sock.sendPresenceUpdate("paused", buf.rawJid) } catch (_) {}
     }
   }
   // ─────────────────────────────────────────────────────────────────────────
@@ -175,6 +182,8 @@ app.post("/send", async (req, res) => {
   if (!sock) return res.status(503).json({ error: "Nao conectado" })
   try {
     const jid = phone.includes("@") ? phone : phone + "@s.whatsapp.net"
+    // Para o indicador de "digitando..." e envia a mensagem
+    try { await sock.sendPresenceUpdate("paused", jid) } catch (_) {}
     await sock.sendMessage(jid, { text: text })
     res.json({ ok: true })
   } catch (e) {
