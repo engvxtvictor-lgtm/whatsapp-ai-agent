@@ -1,6 +1,6 @@
 const baileys = require("@whiskeysockets/baileys")
 const makeWASocket = baileys.default
-const { useMultiFileAuthState, DisconnectReason, makeInMemoryStore } = baileys
+const { useMultiFileAuthState, DisconnectReason } = baileys
 const { Boom } = require("@hapi/boom")
 const express = require("express")
 const qrcode = require("qrcode-terminal")
@@ -11,8 +11,19 @@ app.use(express.json())
 let sock = null
 let isConnecting = false
 
-// Store em memória para resolver @lid → número real
-const store = makeInMemoryStore({})
+// Store em memória para resolver @lid → número real (compatível com todas as versões do Baileys)
+let store = { contacts: {} }
+try {
+  const makeInMemoryStore = baileys.makeInMemoryStore
+  if (typeof makeInMemoryStore === "function") {
+    store = makeInMemoryStore({})
+    console.log("✅ makeInMemoryStore carregado com sucesso.")
+  } else {
+    console.log("⚠️ makeInMemoryStore não disponível nesta versão do Baileys. Usando fallback.")
+  }
+} catch (e) {
+  console.log("⚠️ Erro ao inicializar store:", e.message, "- Usando fallback.")
+}
 
 /**
  * Tenta resolver um JID @lid para o número real do WhatsApp.
@@ -62,8 +73,8 @@ async function conectar() {
     logger: require("pino")({ level: "error" }),
   })
 
-  // Vincula o store ao socket para capturar contatos automaticamente
-  store.bind(sock.ev)
+  // Vincula o store ao socket para capturar contatos automaticamente (se disponível)
+  if (typeof store.bind === "function") store.bind(sock.ev)
 
   sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
