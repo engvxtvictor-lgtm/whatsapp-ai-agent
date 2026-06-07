@@ -8,6 +8,7 @@ from backend.system.logger import logger
 from backend.system.database import AsyncSession
 from backend.system.models.web_models import ClientWeb, ExamWeb
 import os
+import asyncio
 from datetime import date
 
 router = APIRouter(prefix="/webhook")
@@ -170,6 +171,9 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
             
         await whatsapp.send_message(phone, sent_response, reply_jid=session.get("phone_for_reply"))
         session = await sess.add_to_history(session, "assistant", sent_response)
+
+        # Audita a resposta em background sem bloquear o usuário
+        asyncio.create_task(ai_service.audit_response_in_background(text, sent_response))
 
         # Envia o PDF de serviços na primeira mensagem do paciente
         pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)

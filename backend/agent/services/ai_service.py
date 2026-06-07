@@ -120,7 +120,7 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
         "model": settings.OPENAI_MODEL,
         "messages": [{"role": "system", "content": system_prompt}] + messages,
         "temperature": 0.7,
-        "max_tokens": 600,
+        "max_tokens": 350,
     }
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.post(url, headers=headers, json=payload)
@@ -507,16 +507,21 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
     clean = _remove_structured_lines(text)
     clean = validate_output_guardrail(clean)
 
-    # 7. Chama o Agente Vigia para auditar a resposta limpa
-    is_approved = await _call_vigilante_guardrail(message, clean)
-    if not is_approved:
-        logger.warning(f"VIGIA DETECTOU ALUCINAÇÃO OU DESVIO DE ESCOPO! Mensagem do usuário: '{message}'")
-        # Força transbordo bloqueando a resposta gerada
-        fallback_msg = "Peço desculpas, mas não consigo te ajudar com esse assunto. Vou te transferir agora mesmo para um de nossos atendentes humanos! 🙏"
-        return fallback_msg, 0.0, {"needs_human": True}
-
     # 8. Aplica guardrail de upsell para evitar serviços inexistentes/hallucinados
     clean, metadata = apply_upsell_guardrail(clean, metadata, valid_exam_names)
 
     logger.info(f"IA respondeu | confianca={confidence:.2f} | metadata={metadata}")
     return clean, confidence, metadata
+
+
+async def audit_response_in_background(message: str, ai_response: str):
+    """
+    Auditoria assíncrona do Agente Vigia. Chamada DEPOIS que a resposta já foi enviada.
+    Se detectar alucinação, apenas loga o warning (não bloqueia o usuário).
+    """
+    try:
+        is_approved = await _call_vigilante_guardrail(message, ai_response)
+        if not is_approved:
+            logger.warning(f"[VIGIA PÓS-ENVIO] Alucinação detectada na resposta enviada! msg='{message[:50]}'")
+    except Exception as e:
+        logger.error(f"Erro no Agente Vigia em background: {e}")
