@@ -98,6 +98,48 @@ async function conectar() {
     }
   })
   sock.ev.on("creds.update", saveCreds)
+
+  // ─── Debounce: acumula mensagens por 3s antes de processar ───────────────
+  // Evita respostas múltiplas quando o usuário manda várias msgs seguidas
+  const msgBuffer = {} // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
+  const DEBOUNCE_MS = 3000
+
+  async function flushBuffer(phone) {
+    const buf = msgBuffer[phone]
+    if (!buf) return
+    delete msgBuffer[phone]
+
+    const combinedText = buf.texts.join("\n").trim()
+    if (!combinedText) return
+
+    console.log(`[debounce] Processando ${buf.texts.length} msg(s) de ${phone}: "${combinedText.slice(0,60)}"`)
+
+    try {
+      let profile_pic = null
+      try {
+        profile_pic = await sock.profilePictureUrl(buf.resolvedJid, "image")
+      } catch (_) {
+        try { profile_pic = await sock.profilePictureUrl(buf.rawJid, "image") } catch (_) {}
+      }
+
+      const backendUrl = process.env.BACKEND_URL || "http://localhost:8000"
+      await fetch(`${backendUrl}/webhook/message`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          phone: phone,
+          phone_for_reply: buf.rawJid,
+          message: combinedText,
+          profile_pic: profile_pic,
+          push_name: buf.pushName
+        })
+      })
+    } catch (e) {
+      console.error("Erro webhook (debounce):", e.message)
+    }
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0]
     if (!msg.message || msg.key.fromMe) return
@@ -110,46 +152,21 @@ async function conectar() {
     }
     
     const rawJid = msg.key.remoteJid
-    // Tenta resolver @lid para número real
     const resolvedJid = await resolveJid(rawJid)
-    
-    // phone: número limpo para usar como chave e no wa.me
     const phone = resolvedJid.replace("@s.whatsapp.net", "").replace("@lid", "")
-    // phoneForReply: JID completo para enviar mensagens de volta (mantém @lid se necessário)
-    const phoneForReply = rawJid
-
     const pushName = msg.pushName || ""
     const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || ""
     if (!text) return
-    console.log("Mensagem de " + phone + ": " + text)
-    try {
-      // Tenta foto do JID resolvido; se falhar, tenta o JID original
-      let profile_pic = null
-      try {
-        profile_pic = await sock.profilePictureUrl(resolvedJid, 'image')
-      } catch (_) {
-        try {
-          profile_pic = await sock.profilePictureUrl(rawJid, 'image')
-        } catch (_) {
-          profile_pic = null
-        }
-      }
 
-      const backendUrl = process.env.BACKEND_URL || "http://localhost:8000"
-      await fetch(`${backendUrl}/webhook/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
-          phone: phone,
-          phone_for_reply: phoneForReply,
-          message: text, 
-          profile_pic: profile_pic, 
-          push_name: pushName 
-        })
-      })
-    } catch (e) {
-      console.error("Erro webhook:", e.message)
+    // ── Debounce: acumula mensagens e só processa após 3s de silêncio ──
+    if (msgBuffer[phone]) {
+      clearTimeout(msgBuffer[phone].timer)
+      msgBuffer[phone].texts.push(text)
+    } else {
+      msgBuffer[phone] = { texts: [text], pushName, rawJid, resolvedJid }
     }
+    msgBuffer[phone].timer = setTimeout(() => flushBuffer(phone), DEBOUNCE_MS)
+    console.log(`[debounce] Mensagem de ${phone} adicionada ao buffer (${msgBuffer[phone].texts.length} pendente(s))`)
   })
 }
 
