@@ -99,11 +99,11 @@ async function conectar() {
   })
   sock.ev.on("creds.update", saveCreds)
 
-  // ─── Debounce: acumula mensagens por 3s antes de processar ───────────────
-  // Evita respostas múltiplas quando o usuário manda várias msgs seguidas
+  // ─── Debounce: desativado (0ms) a pedido do usuário ───────────────
+  // Mensagens serão processadas instantaneamente
   const msgBuffer = {} // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
   const composingTimers = {} // { jid: timerId }
-  const DEBOUNCE_MS = 3000
+  const DEBOUNCE_MS = 0
 
   async function flushBuffer(phone) {
     const buf = msgBuffer[phone]

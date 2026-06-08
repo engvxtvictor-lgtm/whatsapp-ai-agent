@@ -71,7 +71,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
             "phone_for_reply": phone_for_reply,
         }
         await sess.save_session(phone, new_session)
-        reset_msg = "Tudo bem! 😊 Vou começar um novo atendimento para você. Acabei de enviar novamente o nosso catálogo logo abaixo. Qual serviço chamou sua atenção?"
+        reset_msg = "Tudo bem! 😊 Vou começar um novo atendimento para você. Acabei de enviar novamente o nosso catálogo logo abaixo. Qual serviço chamou sua atenção? (Por favor, mande todas as informações em uma única mensagem para agilizar!)"
         await whatsapp.send_message(phone, reset_msg, reply_jid=phone_for_reply)
         # Reenvia o PDF
         pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
