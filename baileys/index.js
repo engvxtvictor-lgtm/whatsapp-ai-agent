@@ -102,6 +102,7 @@ async function conectar() {
   // ─── Debounce: acumula mensagens por 3s antes de processar ───────────────
   // Evita respostas múltiplas quando o usuário manda várias msgs seguidas
   const msgBuffer = {} // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
+  const composingTimers = {} // { jid: timerId }
   const DEBOUNCE_MS = 3000
 
   async function flushBuffer(phone) {
@@ -115,9 +116,20 @@ async function conectar() {
     console.log(`[debounce] Processando ${buf.texts.length} msg(s) de ${phone}: "${combinedText.slice(0,60)}"`)
 
     // Mostra "digitando..." enquanto processa
-    try {
-      await sock.sendPresenceUpdate("composing", buf.rawJid)
-    } catch (_) {}
+    try { await sock.sendPresenceUpdate("composing", buf.rawJid) } catch (_) {}
+    if (composingTimers[buf.rawJid]) clearInterval(composingTimers[buf.rawJid])
+    composingTimers[buf.rawJid] = setInterval(async () => {
+      try { await sock.sendPresenceUpdate("composing", buf.rawJid) } catch (_) {}
+    }, 10000)
+    
+    // Auto-limpeza após 90s caso o backend falhe silenciosamente
+    setTimeout(() => {
+      if (composingTimers[buf.rawJid]) {
+        clearInterval(composingTimers[buf.rawJid])
+        delete composingTimers[buf.rawJid]
+        try { sock.sendPresenceUpdate("paused", buf.rawJid) } catch (_) {}
+      }
+    }, 90000)
 
     try {
       let profile_pic = null
@@ -142,6 +154,10 @@ async function conectar() {
     } catch (e) {
       console.error("Erro webhook (debounce):", e.message)
       // Para o "digitando..." em caso de erro
+      if (composingTimers[buf.rawJid]) {
+        clearInterval(composingTimers[buf.rawJid])
+        delete composingTimers[buf.rawJid]
+      }
       try { await sock.sendPresenceUpdate("paused", buf.rawJid) } catch (_) {}
     }
   }
@@ -182,6 +198,10 @@ app.post("/send", async (req, res) => {
   if (!sock) return res.status(503).json({ error: "Nao conectado" })
   try {
     const jid = phone.includes("@") ? phone : phone + "@s.whatsapp.net"
+    if (composingTimers[jid]) {
+      clearInterval(composingTimers[jid])
+      delete composingTimers[jid]
+    }
     // Para o indicador de "digitando..." e envia a mensagem
     try { await sock.sendPresenceUpdate("paused", jid) } catch (_) {}
     await sock.sendMessage(jid, { text: text })
@@ -200,6 +220,11 @@ app.post("/send-document", async (req, res) => {
     if (!response.ok) throw new Error(`Falha ao baixar documento: ${response.status}`)
     const buffer = Buffer.from(await response.arrayBuffer())
     const jid = phone.includes("@") ? phone : phone + "@s.whatsapp.net"
+    if (composingTimers[jid]) {
+      clearInterval(composingTimers[jid])
+      delete composingTimers[jid]
+    }
+    try { await sock.sendPresenceUpdate("paused", jid) } catch (_) {}
     await sock.sendMessage(jid, {
       document: buffer,
       mimetype: "application/pdf",
