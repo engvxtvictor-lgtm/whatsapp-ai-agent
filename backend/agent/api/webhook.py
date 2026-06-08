@@ -107,38 +107,58 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         await sess.save_session(phone, session)
         return
 
-    # 2. consulta IA usando o texto censurado
-    context = faq_service.get_context(censored_text)
-    response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context)
-    
-    # Se a IA capturou um novo horario, verifica se ha conflito com consultas ja confirmadas
-    if metadata and metadata.get("appointment_date"):
-        new_date = metadata["appointment_date"]
-        if new_date != session.get("appointment_date"):
-            async with AsyncSession() as db:
-                try:
-                    stmt = select(ClientWeb).where(
-                        ClientWeb.appointment_date == new_date,
-                        ClientWeb.status == "confirmed"
-                    )
-                    result = await db.execute(stmt)
-                    conflict = result.scalars().first()
-                    
-                    if conflict:
-                        logger.info(f"Conflito de horario detectado para {new_date}. Solicitando novo horario a IA...")
-                        temp_history = session["history"] + [
-                            {"role": "system", "content": f"O horario '{new_date}' ja esta reservado por outro paciente com consulta confirmada. Avise o cliente educadamente que esse horario ja esta ocupado e peca para ele sugerir outro dia ou horario."}
-                        ]
-                        response, confidence, metadata = await ai_service.get_response(censored_text, temp_history, context)
-                        if metadata:
-                            metadata["appointment_date"] = None
-                except Exception as e:
-                    logger.error(f"Erro ao verificar conflito de horario: {e}")
+    # Verifica gatilho de suporte humano por palavras-chave na mensagem do usuario
+    keywords = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
+    text_lower = text.lower()
+    user_requested_human = any(kw in text_lower for kw in keywords)
 
-    if confidence < settings.AI_CONFIDENCE_THRESHOLD:
-        session["ai_attempts"] += 1
-    else:
-        session["ai_attempts"] = 0
+    needs_human_trigger = (
+        user_requested_human or 
+        (session["ai_attempts"] >= settings.MAX_AI_ATTEMPTS)
+    )
+
+    metadata = {}
+    confidence = 1.0
+    response = ""
+
+    # Se NÃO disparou o gatilho de humano ainda, consulta a IA
+    if not needs_human_trigger:
+        # 2. consulta IA usando o texto censurado
+        context = faq_service.get_context(censored_text)
+        response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context)
+        
+        # Atualiza o gatilho caso a IA tenha decidido transferir
+        if metadata and metadata.get("needs_human") is True:
+            needs_human_trigger = True
+
+        # Se a IA capturou um novo horario, verifica se ha conflito com consultas ja confirmadas
+        if metadata and metadata.get("appointment_date"):
+            new_date = metadata["appointment_date"]
+            if new_date != session.get("appointment_date"):
+                async with AsyncSession() as db:
+                    try:
+                        stmt = select(ClientWeb).where(
+                            ClientWeb.appointment_date == new_date,
+                            ClientWeb.status == "confirmed"
+                        )
+                        result = await db.execute(stmt)
+                        conflict = result.scalars().first()
+                        
+                        if conflict:
+                            logger.info(f"Conflito de horario detectado para {new_date}. Solicitando novo horario a IA...")
+                            temp_history = session["history"] + [
+                                {"role": "system", "content": f"O horario '{new_date}' ja esta reservado por outro paciente com consulta confirmada. Avise o cliente educadamente que esse horario ja esta ocupado e peca para ele sugerir outro dia ou horario."}
+                            ]
+                            response, confidence, metadata = await ai_service.get_response(censored_text, temp_history, context)
+                            if metadata:
+                                metadata["appointment_date"] = None
+                    except Exception as e:
+                        logger.error(f"Erro ao verificar conflito de horario: {e}")
+
+        if confidence < settings.AI_CONFIDENCE_THRESHOLD:
+            session["ai_attempts"] += 1
+        else:
+            session["ai_attempts"] = 0
 
     # Atualiza dados da sessão caso a IA tenha capturado novos metadados
     if metadata:
@@ -150,17 +170,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                     session[key] = str(metadata[key])[:14]
                 else:
                     session[key] = metadata[key]
-
-    # Verifica gatilho de suporte humano por palavras-chave na mensagem do usuario
-    keywords = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
-    text_lower = text.lower()
-    user_requested_human = any(kw in text_lower for kw in keywords)
-
-    needs_human_trigger = (
-        user_requested_human or 
-        (metadata and metadata.get("needs_human") is True) or
-        (session["ai_attempts"] >= settings.MAX_AI_ATTEMPTS)
-    )
 
     # Adicionar mensagem do usuário à história da sessão
     session = await sess.add_to_history(session, "user", censored_text)
