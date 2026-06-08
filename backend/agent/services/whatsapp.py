@@ -65,7 +65,7 @@ async def send_escalation(phone: str, reply_jid: str = None):
 
 
 async def notify_agent(user_phone: str, message: str, history: list = None):
-    text = f"🔔 *Nova escalação*\n\nCliente: {user_phone}\nÚltima Mensagem: _{message}_"
+    text = f"🔔 *Nova escalação*\n\n*Cliente:* {user_phone}\n*Link Rápido:* https://wa.me/{user_phone}\n*Última Mensagem:* _{message}_"
     
     if history:
         text += "\n\n*Últimas mensagens da conversa:*\n"
