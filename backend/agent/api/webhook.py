@@ -44,10 +44,14 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     # Salva o JID de resposta na sessão para envios futuros
     session["phone_for_reply"] = phone_for_reply
 
-    # Verifica se o usuário quer reiniciar a conversa
+    # 1. Verifica PRIORIDADE MÁXIMA: Gatilho de suporte humano por palavras-chave
+    keywords_human = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
+    text_lower = text.lower().strip()
+    user_requested_human = any(kw in text_lower for kw in keywords_human)
+
+    # 2. Verifica se o usuário quer reiniciar a conversa (secundário ao suporte humano)
     RESET_KEYWORDS = ["recomeça", "recomeca", "reiniciar", "reinicia", "zera", "zerar", "começa de novo", "comeca de novo", "restart", "reset", "reseta", "resetar", "novo atendimento", "começar de novo", "apaga tudo", "esquece tudo", "ignora tudo", "apagar histórico", "limpar conversa"]
-    text_lower_reset = text.lower().strip()
-    is_reset = any(kw in text_lower_reset for kw in RESET_KEYWORDS)
+    is_reset = not user_requested_human and any(kw in text_lower for kw in RESET_KEYWORDS)
 
     if is_reset:
         await sess.delete_session(phone)
@@ -121,14 +125,9 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         await sess.save_session(phone, session)
         return
 
-    # Verifica gatilho de suporte humano por palavras-chave na mensagem do usuario
-    keywords = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
-    text_lower = text.lower()
-    user_requested_human = any(kw in text_lower for kw in keywords)
-
     needs_human_trigger = (
         user_requested_human or 
-        (session["ai_attempts"] >= settings.MAX_AI_ATTEMPTS)
+        (session.get("ai_attempts", 0) >= settings.MAX_AI_ATTEMPTS)
     )
 
     metadata = {}
