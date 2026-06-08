@@ -78,6 +78,20 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
             pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
             await whatsapp.send_document(phone=phone, pdf_url=pdf_url, filename=settings.SERVICES_PDF_FILENAME, caption="📄 Segue nossa tabela completa de serviços e valores!", reply_jid=phone_for_reply)
         logger.info(f"Sessão reiniciada por comando do usuário: {phone[:6]}***")
+        
+        # Deleta do painel se o serviço ainda for Atendimento Humano ou nulo (resetando o paciente)
+        async with AsyncSession() as db:
+            try:
+                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                result = await db.execute(stmt)
+                client_record = result.scalars().first()
+                if client_record and client_record.status == "pending" and (not client_record.service or client_record.service == "Atendimento Humano"):
+                    await db.delete(client_record)
+                    await db.commit()
+                    logger.info(f"Cliente {phone} removido do painel (zera/reiniciar).")
+            except Exception as e:
+                logger.error(f"Erro ao remover cliente do painel no reset: {e}")
+                
         return
 
     if session["escalated"]:
@@ -176,7 +190,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
 
     if needs_human_trigger:
         await whatsapp.send_escalation(phone, reply_jid=session.get("phone_for_reply"))
-        session = await sess.add_to_history(session, "assistant", "Vou te transferir para um atendente agora. Aguarde um momento! 🙏")
+        session = await sess.add_to_history(session, "assistant", "A sua demanda foi acionada, logo mais uma secretária vai entrar em contato")
         session["escalated"] = True
         
         # Salva ou atualiza ClientWeb no banco de dados com needs_human=True

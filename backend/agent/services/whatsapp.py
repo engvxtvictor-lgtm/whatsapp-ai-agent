@@ -59,7 +59,7 @@ async def send_document(phone: str, pdf_url: str, filename: str = "tabela_servic
 
 async def send_escalation(phone: str, reply_jid: str = None):
     await send_message(phone,
-        "Vou te transferir para um atendente agora. Aguarde um momento! 🙏",
+        "A sua demanda foi acionada, logo mais uma secretária vai entrar em contato",
         reply_jid=reply_jid
     )
 
