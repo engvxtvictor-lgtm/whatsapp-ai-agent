@@ -99,6 +99,10 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         return
 
     if session["escalated"]:
+        # Se o usuário manda mensagem com reset enquanto escalado, deixa o reset funcionar normalmente (já tratado acima).
+        # Caso contrário, só ignora silenciosamente para não responder como IA enquanto atendente humano está em jogo.
+        # Mas re-checa se o painel já desativou o 'escalated' (começa fresco)
+        logger.info(f"Sessão escalada para humano detectada: {phone[:6]}***. Ignorando IA.")
         return
 
     # Determinar se é a primeira mensagem do paciente antes de atualizar o histórico
@@ -368,7 +372,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 else:
                     confirm_msg += "\nSua consulta será confirmada em até *24 horas*! Te avisaremos aqui. 😊"
                 
-                await whatsapp.send_message(phone, confirm_msg)
+                await whatsapp.send_message(phone, confirm_msg, reply_jid=session.get("phone_for_reply"))
                 session = await sess.add_to_history(session, "assistant", confirm_msg)
 
                 # O dashboard já sinaliza pacientes que precisam de atendimento humano (is_busy_day).
