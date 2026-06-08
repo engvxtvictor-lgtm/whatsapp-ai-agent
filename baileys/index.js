@@ -11,6 +11,11 @@ app.use(express.json())
 let sock = null
 let isConnecting = false
 
+// ─── Estado Global ───────────────
+const msgBuffer = {} // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
+const composingTimers = {} // { jid: timerId }
+const DEBOUNCE_MS = 0
+
 // Store em memória para resolver @lid → número real (compatível com todas as versões do Baileys)
 let store = { contacts: {} }
 try {
@@ -99,11 +104,7 @@ async function conectar() {
   })
   sock.ev.on("creds.update", saveCreds)
 
-  // ─── Debounce: desativado (0ms) a pedido do usuário ───────────────
   // Mensagens serão processadas instantaneamente
-  const msgBuffer = {} // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
-  const composingTimers = {} // { jid: timerId }
-  const DEBOUNCE_MS = 0
 
   async function flushBuffer(phone) {
     const buf = msgBuffer[phone]
