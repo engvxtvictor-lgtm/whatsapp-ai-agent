@@ -100,7 +100,7 @@
                 <button class="btn-delete-client" title="Excluir Paciente"><i class="fa-solid fa-trash-can"></i></button>
                 ${statusBadgeHtml}
                 <div class="client-avatar-container">
-                    <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar">
+                    <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar" onerror="this.onerror=null;this.src='https://api.dicebear.com/7.x/adventurer/svg?seed=${client.phone}';">
                 </div>
                 <h4 class="client-name">${client.name}</h4>
                 <p class="client-meta"><strong>CPF:</strong> ${client.cpf}</p>
@@ -260,8 +260,9 @@
                     if (client.phone.includes("@lid")) {
                         alert("Atenção: Este cliente está usando um número oculto (Meta LID). O WhatsApp Web não permite abrir conversas com IDs ocultos via link. Por favor, responda a este cliente diretamente pelo aplicativo oficial do WhatsApp (onde a conversa já está iniciada).");
                     } else {
-                        // Open wa.me link directly
-                        window.open(`https://wa.me/${client.phone}`, "_blank");
+                        // Open wa.me link directly (clean phone number first to remove device suffix like :1)
+                        const cleanPhone = client.phone.split(':')[0].replace(/[^0-9]/g, '');
+                        window.open(`https://wa.me/${cleanPhone}`, "_blank");
                     }
                     
                     // Resolve needs_human on the backend
