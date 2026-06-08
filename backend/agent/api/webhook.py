@@ -45,7 +45,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     session["phone_for_reply"] = phone_for_reply
 
     # Verifica se o usuário quer reiniciar a conversa
-    RESET_KEYWORDS = ["recomeça", "recomeca", "reiniciar", "reinicia", "zera", "zerar", "começa de novo", "comeca de novo", "restart", "reset", "novo atendimento", "começar de novo"]
+    RESET_KEYWORDS = ["recomeça", "recomeca", "reiniciar", "reinicia", "zera", "zerar", "começa de novo", "comeca de novo", "restart", "reset", "reseta", "resetar", "novo atendimento", "começar de novo", "apaga tudo", "esquece tudo", "ignora tudo", "apagar histórico", "limpar conversa"]
     text_lower_reset = text.lower().strip()
     is_reset = any(kw in text_lower_reset for kw in RESET_KEYWORDS)
 
