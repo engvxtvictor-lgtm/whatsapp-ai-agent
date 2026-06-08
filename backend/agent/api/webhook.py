@@ -168,7 +168,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     if needs_human_trigger:
         await whatsapp.send_escalation(phone, reply_jid=session.get("phone_for_reply"))
         session = await sess.add_to_history(session, "assistant", "Vou te transferir para um atendente agora. Aguarde um momento! 🙏")
-        await whatsapp.notify_agent(phone, censored_text)
+        await whatsapp.notify_agent(phone, censored_text, session.get("history", []))
         session["escalated"] = True
         
         # Salva ou atualiza ClientWeb no banco de dados com needs_human=True
@@ -353,7 +353,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 # Notifica a recepção se o dia estiver ocupado
                 if is_busy_day:
                     time_display = raw_slot_time if raw_slot_time else session['appointment_date']
-                    await whatsapp.notify_agent(phone, f"Dia ocupado! Confirmar horário de {session['name']} para {time_display}")
+                    await whatsapp.notify_agent(phone, f"Dia ocupado! Confirmar horário de {session['name']} para {time_display}", session.get("history", []))
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
 

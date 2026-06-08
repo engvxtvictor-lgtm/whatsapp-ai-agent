@@ -64,7 +64,20 @@ async def send_escalation(phone: str, reply_jid: str = None):
     )
 
 
-async def notify_agent(user_phone: str, message: str):
-    await send_message(settings.HUMAN_PHONE,
-        f"🔔 *Nova escalação*\n\nCliente: {user_phone}\nMensagem: _{message}_"
-    )
+async def notify_agent(user_phone: str, message: str, history: list = None):
+    text = f"🔔 *Nova escalação*\n\nCliente: {user_phone}\nÚltima Mensagem: _{message}_"
+    
+    if history:
+        text += "\n\n*Últimas mensagens da conversa:*\n"
+        # Pega as últimas 6 mensagens para dar contexto ao atendente
+        recent_history = [msg for msg in history if msg["role"] in ["user", "assistant"]][-6:]
+        for msg in recent_history:
+            role = "👤 Cliente" if msg["role"] == "user" else "🤖 IA"
+            # Limpa quebras de linha para ficar mais legível
+            content = msg["content"].replace('\n', ' ').strip()
+            # Limita tamanho da mensagem no histórico para evitar textos gigantes
+            if len(content) > 150:
+                content = content[:147] + "..."
+            text += f"{role}: {content}\n"
+            
+    await send_message(settings.HUMAN_PHONE, text)
