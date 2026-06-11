@@ -408,7 +408,7 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
         logger.error(f"Erro ao carregar slots de agenda: {e}")
 
     # 3. Monta o system prompt completo
-    system = SYSTEM
+    system = SYSTEM_PROMPT
     if services_context:
         system += services_context
     if slots_context:
