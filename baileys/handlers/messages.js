@@ -77,7 +77,7 @@ function setupMessageHandlers(sock) {
     }
     
     // Use centralized JID resolution
-    const { rawJid, resolvedPhone } = getSenderNumber(msg, sock);
+    const { rawJid, resolvedPhone } = await getSenderNumber(msg, sock);
     const phone = resolvedPhone;
     const pushName = msg.pushName || "";
     const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || "";

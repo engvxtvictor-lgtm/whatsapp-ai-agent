@@ -6,7 +6,7 @@
  * @param {Object} sock - Instância do socket Baileys.
  * @returns {Object} - Objeto contendo o rawJid e o resolvedPhone.
  */
-function getSenderNumber(msg, sock) {
+async function getSenderNumber(msg, sock) {
   // Temporary log for debugging
   console.log("msg.key:", JSON.stringify(msg.key, null, 2));
 
@@ -24,7 +24,7 @@ function getSenderNumber(msg, sock) {
       console.log(`✅ LID resolvido via senderPn: ${rawJid} → ${normalizedPhone}`);
     } else if (sock && sock.signalRepository && sock.signalRepository.lidMapping) {
       // Try fallback to lidMapping
-      const resolved = sock.signalRepository.lidMapping.getPNForLID(rawJid);
+      const resolved = await sock.signalRepository.lidMapping.getPNForLID(rawJid);
       if (resolved) {
         normalizedPhone = resolved;
         console.log(`✅ LID resolvido via lidMapping: ${rawJid} → ${normalizedPhone}`);
