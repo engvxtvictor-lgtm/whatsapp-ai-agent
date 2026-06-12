@@ -23,19 +23,21 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     profile_pic = body.get("profile_pic", None)
     push_name = body.get("push_name", "")
 
-    if not phone or not text:
+    media = body.get("media", None)
+
+    if not phone or (not text and not media):
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text, profile_pic, push_name, phone_for_reply)
+    bg.add_task(handle, phone, text, profile_pic, push_name, phone_for_reply, media)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = "", phone_for_reply: str = None):
+async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = "", phone_for_reply: str = None, media: dict = None):
     # phone_for_reply: JID completo para enviar respostas (pode ser @lid ou @s.whatsapp.net)
     # phone: número limpo sem sufixo, usado como chave de sessão e no banco de dados
     if not phone_for_reply:
         phone_for_reply = phone
-    logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | '{text[:50]}'")
+    logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | media={'sim' if media else 'nao'} | '{text[:50]}'")
     session = await sess.get_session(phone)
     if profile_pic:
         session["profile_pic"] = profile_pic
@@ -43,6 +45,22 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         session["name"] = push_name
     # Salva o JID de resposta na sessão para envios futuros
     session["phone_for_reply"] = phone_for_reply
+
+    # 0. Processamento inicial de mídia (Áudio)
+    if media and media["type"] == "audio":
+        try:
+            transcribed_text = await ai_service.transcribe_audio(media["data"], media["mimetype"])
+            if transcribed_text:
+                text = f"[Áudio Transcrito do Paciente]: {transcribed_text}"
+            else:
+                text = "[Paciente enviou um áudio vazio ou ininteligível.]"
+        except Exception as e:
+            logger.error(f"Erro na transcrição de áudio: {e}")
+            text = "[Paciente enviou um arquivo de áudio que eu não consigo ler. Peça educadamente para ele escrever em texto.]"
+        media = None # Após transcrever, tratamos como texto normal
+    
+    if not text and media and media["type"] == "image":
+        text = "[Paciente enviou uma imagem]"
 
     # 1. Verifica PRIORIDADE MÁXIMA: Gatilho de suporte humano por palavras-chave
     keywords_human = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
@@ -142,7 +160,7 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     if not needs_human_trigger:
         # 2. consulta IA usando o texto censurado
         context = faq_service.get_context(censored_text)
-        response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context)
+        response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context, media=media)
         
         # Atualiza o gatilho caso a IA tenha decidido transferir
         if metadata and metadata.get("needs_human") is True:

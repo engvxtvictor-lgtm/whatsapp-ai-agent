@@ -1,9 +1,10 @@
 const { getSenderNumber } = require('../utils/jid');
+const { downloadMediaMessage } = require('@whiskeysockets/baileys');
 
 // ─── Estado Global para as Mensagens ───────────────
 const msgBuffer = {}; // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
 const composingTimers = {}; // { jid: timerId }
-const DEBOUNCE_MS = 0;
+const DEBOUNCE_MS = 3000;
 
 function setupMessageHandlers(sock) {
   async function flushBuffer(phone) {
@@ -12,9 +13,9 @@ function setupMessageHandlers(sock) {
     delete msgBuffer[phone];
 
     const combinedText = buf.texts.join("\n").trim();
-    if (!combinedText) return;
+    if (!combinedText && !buf.media) return;
 
-    console.log(`[debounce] Processando ${buf.texts.length} msg(s) de ${phone}: "${combinedText.slice(0, 60)}"`);
+    console.log(`[debounce] Processando de ${phone}: texto=${combinedText.length} media=${buf.media ? buf.media.type : 'none'}`);
 
     // Show "typing..."
     try { await sock.sendPresenceUpdate("composing", buf.rawJid); } catch (_) {}
@@ -50,6 +51,7 @@ function setupMessageHandlers(sock) {
           phone: phone, // Normalized phone (e.g. 558699999999)
           phone_for_reply: buf.rawJid, // Original JID (e.g. 123123@lid)
           message: combinedText,
+          media: buf.media,
           profile_pic: profile_pic,
           push_name: buf.pushName
         })
@@ -80,19 +82,40 @@ function setupMessageHandlers(sock) {
     const { rawJid, resolvedPhone } = await getSenderNumber(msg, sock);
     const phone = resolvedPhone;
     const pushName = msg.pushName || "";
-    const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || "";
+    const text = (msg.message.conversation) || (msg.message.extendedTextMessage && msg.message.extendedTextMessage.text) || (msg.message.imageMessage && msg.message.imageMessage.caption) || "";
     
-    if (!text) return;
+    // Check for media
+    let media = null;
+    let messageType = Object.keys(msg.message || {})[0];
+
+    if (messageType === 'imageMessage' || messageType === 'audioMessage' || messageType === 'ptvMessage') {
+      try {
+        const buffer = await downloadMediaMessage(msg, 'buffer', {}, { logger: console, reuploadRequest: sock.updateMediaMessage });
+        const mimeType = msg.message[messageType].mimetype;
+        const type = messageType === 'imageMessage' ? 'image' : 'audio';
+        
+        media = {
+          type: type,
+          mimetype: mimeType,
+          data: buffer.toString('base64')
+        };
+      } catch (e) {
+        console.error("Erro ao baixar media:", e);
+      }
+    }
+
+    if (!text && !media) return;
 
     // ── Debounce ──
     if (msgBuffer[phone]) {
       clearTimeout(msgBuffer[phone].timer);
-      msgBuffer[phone].texts.push(text);
+      if (text) msgBuffer[phone].texts.push(text);
+      if (media) msgBuffer[phone].media = media; // Armazena apenas a última mídia no debounce
     } else {
-      msgBuffer[phone] = { texts: [text], pushName, rawJid };
+      msgBuffer[phone] = { texts: text ? [text] : [], media: media, pushName, rawJid };
     }
     msgBuffer[phone].timer = setTimeout(() => flushBuffer(phone), DEBOUNCE_MS);
-    console.log(`[debounce] Mensagem de ${phone} adicionada ao buffer (${msgBuffer[phone].texts.length} pendente(s))`);
+    console.log(`[debounce] Mensagem/Midia de ${phone} adicionada ao buffer (${msgBuffer[phone].texts.length} texto(s) pendente(s))`);
   });
 
   return { composingTimers };

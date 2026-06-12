@@ -17,9 +17,43 @@ from backend.agent.services.guardrails import (
 
 
 # ──────────────────────────────────────────────
-# CHAMADA À OPENAI (CHATGPT)
+# CHAMADA À OPENAI (CHATGPT E WHISPER)
 # ──────────────────────────────────────────────
-async def _call_openai(system_prompt: str, messages: list) -> str:
+async def transcribe_audio(audio_base64: str, mime_type: str) -> str:
+    """Transcreve áudio base64 usando Whisper."""
+    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "sua_chave_openai_aqui":
+        return ""
+    import base64
+    import tempfile
+    import os
+    
+    ext = ".ogg"
+    if "mp3" in mime_type: ext = ".mp3"
+    elif "wav" in mime_type: ext = ".wav"
+    
+    audio_bytes = base64.b64decode(audio_base64)
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_audio:
+        temp_audio.write(audio_bytes)
+        temp_audio_path = temp_audio.name
+        
+    try:
+        url = f"{settings.OPENAI_API_URL}/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            with open(temp_audio_path, "rb") as f:
+                files = {"file": (f"audio{ext}", f, mime_type)}
+                data = {"model": "whisper-1"}
+                resp = await client.post(url, headers=headers, files=files, data=data)
+                resp.raise_for_status()
+                return resp.json().get("text", "")
+    except Exception as e:
+        logger.error(f"Erro Whisper: {e}")
+        return ""
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
+
+async def _call_openai(system_prompt: str, messages: list, media: dict = None) -> str:
     """Chama a API da OpenAI. Retorna o texto da resposta."""
     if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "sua_chave_openai_aqui":
         raise Exception("OPENAI_API_KEY não configurada.")
@@ -29,9 +63,21 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
         "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
+    api_messages = [{"role": "system", "content": system_prompt}] + messages
+    
+    if media and media.get("type") == "image":
+        for i in range(len(api_messages)-1, -1, -1):
+            if api_messages[i]["role"] == "user":
+                original_text = api_messages[i]["content"]
+                api_messages[i]["content"] = [
+                    {"type": "text", "text": original_text},
+                    {"type": "image_url", "image_url": {"url": f"data:{media['mimetype']};base64,{media['data']}"}}
+                ]
+                break
+
     payload = {
         "model": settings.OPENAI_MODEL,
-        "messages": [{"role": "system", "content": system_prompt}] + messages,
+        "messages": api_messages,
         "temperature": 0.7,
         "max_tokens": 350,
     }
@@ -373,7 +419,7 @@ def apply_upsell_guardrail(clean_text: str, metadata: dict | None, valid_exam_na
 # ──────────────────────────────────────────────
 # FUNÇÃO PRINCIPAL
 # ──────────────────────────────────────────────
-async def get_response(message: str, history: list, faq_context: str = "") -> tuple[str, float, dict | None]:
+async def get_response(message: str, history: list, faq_context: str = "", media: dict = None) -> tuple[str, float, dict | None]:
     # 1. Input Guardrail: detecta jailbreak
     if detect_jailbreak(message):
         logger.warning(f"Jailbreak detectado: '{message[:50]}'")
@@ -420,7 +466,7 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
 
     # 4. Orquestração da Redundância (Fallback por Timeout)
     text = None
-    primary_task = asyncio.create_task(_call_openai(system, messages))
+    primary_task = asyncio.create_task(_call_openai(system, messages, media))
     
     try:
         logger.info(f"Chamando Agente Primário ({settings.OPENAI_MODEL}) com timeout de {settings.AI_TIMEOUT_SECONDS}s...")
