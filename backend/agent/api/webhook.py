@@ -391,4 +391,20 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
 
+    # Atualiza incrementalmente o banco de dados com Nome e CPF se o cliente já existir
+    if session.get("name") or session.get("cpf"):
+        async with AsyncSession() as db:
+            try:
+                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                result = await db.execute(stmt)
+                existing = result.scalars().first()
+                if existing:
+                    if session.get("name"):
+                        existing.name = session["name"]
+                    if session.get("cpf"):
+                        existing.cpf = str(session["cpf"])[:14]
+                    await db.commit()
+            except Exception as e:
+                logger.error(f"Erro na atualização incremental do DB: {e}")
+
     await sess.save_session(phone, session)
