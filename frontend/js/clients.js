@@ -398,15 +398,49 @@
     const btnCancelEditClient = document.getElementById("btn-cancel-edit-client");
     const formEditClient = document.getElementById("form-edit-client");
     
-    // Função utilitária para copiar pro clipboard exposta globalmente
     window.copyToClipboard = function(text) {
         if (!text) return;
-        navigator.clipboard.writeText(text).then(() => {
-            showToast("Copiado!", "success");
-        }).catch(err => {
-            console.error('Falha ao copiar: ', err);
-        });
+        
+        if (navigator.clipboard && window.isSecureContext) {
+            navigator.clipboard.writeText(text).then(() => {
+                showToast("Copiado!", "success");
+            }).catch(err => {
+                console.error('Falha ao copiar: ', err);
+                fallbackCopyTextToClipboard(text);
+            });
+        } else {
+            fallbackCopyTextToClipboard(text);
+        }
     };
+
+    function fallbackCopyTextToClipboard(text) {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        
+        // Evitar scroll
+        textArea.style.top = "0";
+        textArea.style.left = "0";
+        textArea.style.position = "fixed";
+        textArea.style.opacity = "0";
+        
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        
+        try {
+            const successful = document.execCommand('copy');
+            if (successful) {
+                showToast("Copiado!", "success");
+            } else {
+                showToast("Erro ao copiar. Tente manualmente.", "error");
+            }
+        } catch (err) {
+            console.error('Falha no fallback de cópia', err);
+            showToast("Erro ao copiar. Tente manualmente.", "error");
+        }
+        
+        document.body.removeChild(textArea);
+    }
 
     window.openEditClientModal = function(client) {
         document.getElementById("edit-client-id").value = client.id;
