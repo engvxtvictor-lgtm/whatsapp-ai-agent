@@ -95,7 +95,7 @@
                    </span>`
                 : '';
 
-            const cleanPhone = client.phone.replace(/\D/g, '');
+            const cleanPhone = client.phone.split(':')[0].replace(/\D/g, '');
 
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
