@@ -41,10 +41,16 @@ async def transcribe_audio(audio_base64: str, mime_type: str) -> str:
         headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
         async with httpx.AsyncClient(timeout=30.0) as client:
             with open(temp_audio_path, "rb") as f:
-                files = {"file": (f"audio{ext}", f, mime_type)}
+                # Force standard mime types to prevent OpenAI API from rejecting WhatsApp's specific mime string
+                safe_mime = "audio/mpeg" if ext == ".mp3" else "audio/wav" if ext == ".wav" else "audio/ogg"
+                files = {"file": (f"audio{ext}", f, safe_mime)}
                 data = {"model": "whisper-1"}
                 resp = await client.post(url, headers=headers, files=files, data=data)
-                resp.raise_for_status()
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    logger.error(f"Erro HTTP Whisper: {exc.response.status_code} - {exc.response.text}")
+                    return ""
                 return resp.json().get("text", "")
     except Exception as e:
         logger.error(f"Erro Whisper: {e}")
