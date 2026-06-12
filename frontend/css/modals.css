@@ -84,3 +84,32 @@
     background-color: #fafafb;
 }
 
+/* Input with Copy Button */
+.input-with-copy {
+    display: flex;
+    align-items: center;
+    position: relative;
+}
+
+.input-with-copy input {
+    flex: 1;
+    padding-right: 40px;
+}
+
+.btn-icon-copy {
+    position: absolute;
+    right: 5px;
+    background: none;
+    border: none;
+    color: var(--gold-primary);
+    cursor: pointer;
+    font-size: 16px;
+    padding: 5px;
+    border-radius: 4px;
+    transition: background-color 0.2s, color 0.2s;
+}
+
+.btn-icon-copy:hover {
+    background-color: rgba(197, 168, 128, 0.1);
+    color: var(--gold-dark);
+}

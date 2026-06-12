@@ -98,12 +98,25 @@
             const cleanPhone = client.phone.split(':')[0].replace(/\D/g, '');
 
             card.innerHTML = `
-                <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
-                <button class="btn-delete-client" title="Excluir Paciente"><i class="fa-solid fa-trash-can"></i></button>
-                ${statusBadgeHtml}
-                <h4 class="client-name">${client.name}</h4>
-                <p class="client-meta"><strong>CPF:</strong> ${client.cpf}</p>
-                <p class="client-meta"><strong>Tel:</strong> <a href="https://wa.me/${cleanPhone}" target="_blank" class="whatsapp-link"><i class="fa-brands fa-whatsapp"></i> ${client.phone}</a></p>
+                <div class="client-card-header" style="width: 100%; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''} style="position: static; opacity: 0.6; width: 18px; height: 18px; cursor: pointer; margin: 0;">
+                        ${statusBadgeHtml}
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn-edit-client" title="Editar Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(197, 168, 128, 0.1); color: var(--gold-dark); border: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn-delete-client" title="Excluir Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(255, 59, 48, 0.1); color: var(--status-red); border: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+                </div>
+                
+                <h4 class="client-name" style="margin-top: 0;">${client.name}</h4>
+                <p class="client-meta"><strong>CPF:</strong> ${client.cpf || 'Não informado'}</p>
+                <p class="client-meta">
+                    <strong>Tel:</strong> 
+                    <a href="https://wa.me/${cleanPhone}" target="_blank" class="whatsapp-link" style="color: var(--whatsapp-green); text-decoration: none; font-weight: 500;">
+                        <i class="fa-brands fa-whatsapp"></i> ${client.phone.split(':')[0]}
+                    </a>
+                </p>
                 
                 <div class="client-badges">
                     <span class="badge ${channelBadgeClass}">
@@ -163,6 +176,15 @@
                     }
                 }
             });
+
+            // Clique no botão editar
+            const btnEditClient = card.querySelector(".btn-edit-client");
+            if (btnEditClient) {
+                btnEditClient.addEventListener("click", (e) => {
+                    e.stopPropagation();
+                    openEditClientModal(client);
+                });
+            }
 
             // Clique no toggle da IA
             const iaCheckbox = card.querySelector(".ia-toggle-checkbox");
@@ -367,3 +389,102 @@
     clientSearchInput.addEventListener("input", renderClients);
     filterServiceSelect.addEventListener("change", renderClients);
     filterSourceSelect.addEventListener("change", renderClients);
+    
+    // ============================================
+    // Lógica do Modal de Edição de Paciente
+    // ============================================
+    const modalEditClient = document.getElementById("modal-edit-client");
+    const btnCloseEditClient = document.getElementById("btn-close-edit-client-modal");
+    const btnCancelEditClient = document.getElementById("btn-cancel-edit-client");
+    const formEditClient = document.getElementById("form-edit-client");
+    
+    // Função utilitária para copiar pro clipboard exposta globalmente
+    window.copyToClipboard = function(text) {
+        if (!text) return;
+        navigator.clipboard.writeText(text).then(() => {
+            showToast("Copiado!", "success");
+        }).catch(err => {
+            console.error('Falha ao copiar: ', err);
+        });
+    };
+
+    window.openEditClientModal = function(client) {
+        document.getElementById("edit-client-id").value = client.id;
+        document.getElementById("edit-client-name").value = client.name || "";
+        document.getElementById("edit-client-cpf").value = client.cpf || "";
+        document.getElementById("edit-client-phone").value = client.phone || "";
+        document.getElementById("edit-client-service").value = client.service || "";
+        document.getElementById("edit-client-date").value = client.appointment_date || "";
+        
+        modalEditClient.classList.add("active");
+    };
+
+    function closeEditClientModal() {
+        modalEditClient.classList.remove("active");
+        formEditClient.reset();
+    }
+
+    if(btnCloseEditClient) btnCloseEditClient.addEventListener("click", closeEditClientModal);
+    if(btnCancelEditClient) btnCancelEditClient.addEventListener("click", closeEditClientModal);
+    
+    if(formEditClient) {
+        formEditClient.addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const btnSave = document.getElementById("btn-save-edit-client");
+            const originalText = btnSave.innerHTML;
+            btnSave.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Salvando...';
+            btnSave.disabled = true;
+            
+            const clientId = document.getElementById("edit-client-id").value;
+            // Procurar cliente original
+            const originalClient = allClients.find(c => c.id == clientId);
+            
+            const updatedData = {
+                name: document.getElementById("edit-client-name").value,
+                cpf: document.getElementById("edit-client-cpf").value,
+                phone: document.getElementById("edit-client-phone").value,
+                service: document.getElementById("edit-client-service").value,
+                appointment_date: document.getElementById("edit-client-date").value,
+                
+                // Mantenha os outros dados originais
+                source: originalClient.source,
+                status: originalClient.status,
+                upsell_success: originalClient.upsell_success,
+                upsell_service: originalClient.upsell_service,
+                ai_active: originalClient.ai_active,
+                exam_id: originalClient.exam_id
+            };
+            
+            try {
+                const token = localStorage.getItem("token");
+                const response = await fetch(`${API_BASE}/api/clients/${clientId}`, {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        "Authorization": `Bearer ${token}`
+                    },
+                    body: JSON.stringify(updatedData)
+                });
+                
+                if (response.ok) {
+                    const savedClient = await response.json();
+                    // Atualiza localmente
+                    const index = allClients.findIndex(c => c.id == clientId);
+                    if (index !== -1) {
+                        allClients[index] = savedClient;
+                    }
+                    showToast("Paciente atualizado com sucesso!", "success");
+                    closeEditClientModal();
+                    renderClients();
+                } else {
+                    showToast("Erro ao atualizar paciente.", "error");
+                }
+            } catch (error) {
+                console.error("Erro na edição:", error);
+                showToast("Erro de comunicação com servidor.", "error");
+            } finally {
+                btnSave.innerHTML = originalText;
+                btnSave.disabled = false;
+            }
+        });
+    }

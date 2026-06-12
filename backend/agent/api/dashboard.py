@@ -174,6 +174,57 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
     return client_schema
 
 
+@router.put("/clients/{client_id}", response_model=ClientSchema)
+async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+        
+    service_name = client_data.service
+    if client_data.exam_id:
+        exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == client_data.exam_id))
+        exam = exam_res.scalars().first()
+        if exam:
+            service_name = exam.name
+
+    client.name = client_data.name
+    client.cpf = client_data.cpf
+    client.phone = client_data.phone
+    client.service = service_name
+    client.appointment_date = client_data.appointment_date
+    client.exam_id = client_data.exam_id
+    
+    await db.commit()
+    await db.refresh(client)
+    
+    # Reload with relationships
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).where(ClientWeb.id == client.id)
+    )
+    client = result.scalars().first()
+    
+    return ClientSchema(
+        id=client.id,
+        name=client.name,
+        cpf=client.cpf,
+        phone=client.phone,
+        source=client.source,
+        service=client.service,
+        appointment_date=client.appointment_date,
+        slot_date=client.slot_date.isoformat() if client.slot_date else None,
+        slot_time=client.slot.time_str if client.slot else None,
+        upsell_success=client.upsell_success,
+        upsell_service=client.upsell_service,
+        status=client.status,
+        ai_active=client_data.ai_active,
+        exam_id=client.exam_id,
+        exam_category=client.exam.category if client.exam else None,
+        exam_price=client.exam.price if client.exam else None,
+        needs_human=client.needs_human
+    )
+
+
 @router.put("/clients/{client_id}/confirm")
 async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: AsyncSession = Depends(get_db)):
     result = await db.execute(

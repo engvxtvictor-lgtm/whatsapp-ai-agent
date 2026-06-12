@@ -16,8 +16,8 @@
     transition: all 0.3s cubic-bezier(0.165, 0.84, 0.44, 1);
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
+    align-items: flex-start;
+    text-align: left;
     cursor: pointer;
 }
 
@@ -90,7 +90,8 @@
 /* Badges */
 .client-badges {
     display: flex;
-    justify-content: center;
+    justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 8px;
     margin-top: 15px;
 }
