@@ -40,7 +40,6 @@ class ClientSchema(BaseModel):
     phone: str
     source: str = "whatsapp"
     service: str
-    profile_pic: Optional[str] = None
     
     # Novos campos de agendamento e upsell
     appointment_date: Optional[str] = None
@@ -104,7 +103,6 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
             phone=client.phone,
             source=client.source,
             service=client.service,
-            profile_pic=client.profile_pic,
             appointment_date=client.appointment_date,
             slot_date=client.slot_date.isoformat() if client.slot_date else None,
             slot_time=client.slot.time_str if client.slot else None,
@@ -137,7 +135,6 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         phone=client_data.phone,
         source=client_data.source,
         service=service_name,
-        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}",
         appointment_date=client_data.appointment_date,
         upsell_success=client_data.upsell_success,
         upsell_service=client_data.upsell_service,
@@ -162,7 +159,6 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         phone=new_client.phone,
         source=new_client.source,
         service=new_client.service,
-        profile_pic=new_client.profile_pic,
         appointment_date=new_client.appointment_date,
         slot_date=new_client.slot_date.isoformat() if new_client.slot_date else None,
         slot_time=new_client.slot.time_str if new_client.slot else None,

@@ -34,15 +34,6 @@ function setupMessageHandlers(sock) {
     }, 90000);
 
     try {
-      let profile_pic = null;
-      // Get profile pic using resolved JID first, then raw JID
-      try {
-        const queryJid = phone.includes("@") ? phone : phone + "@s.whatsapp.net";
-        profile_pic = await sock.profilePictureUrl(queryJid, "image");
-      } catch (_) {
-        try { profile_pic = await sock.profilePictureUrl(buf.rawJid, "image"); } catch (_) {}
-      }
-
       const backendUrl = process.env.BACKEND_URL || "http://localhost:8000";
       await fetch(`${backendUrl}/webhook/message`, {
         method: "POST",
@@ -52,7 +43,6 @@ function setupMessageHandlers(sock) {
           phone_for_reply: buf.rawJid, // Original JID (e.g. 123123@lid)
           message: combinedText,
           media: buf.media,
-          profile_pic: profile_pic,
           push_name: buf.pushName
         })
       });

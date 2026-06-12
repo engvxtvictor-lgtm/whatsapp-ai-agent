@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS web_clients (
     phone VARCHAR(20) NOT NULL,
     source VARCHAR(20) DEFAULT 'whatsapp',
     service VARCHAR(50) NOT NULL,
-    profile_pic VARCHAR(255),
     
     -- Novos campos para agendamento e upsell
     appointment_date VARCHAR(100),
@@ -113,11 +112,10 @@ VALUES
 ('Extração Complexa (Siso)', 300.00, 'Cirurgia')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service, status, exam_id)
-VALUES 
-('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento (por sessão)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Raspagem (Limpeza)', 'confirmed', 13),
-('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Raspagem (Limpeza)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL, 'pending', 1),
-('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Pino + Coroa', 'confirmed', 17)
+INSERT INTO web_clients (name, cpf, phone, source, service, appointment_date, upsell_success, upsell_service, status, exam_id)
+VALUES    ('Rodrigo Silva', '111.111.111-11', '5511999999999', 'whatsapp', 'Clareamento', '2023-11-20 14:00', true, 'Limpeza Dental', 'confirmed', 2),
+    ('Beatriz Costa', '222.222.222-22', '5511888888888', 'instagram', 'Limpeza', '2023-11-22 09:30', false, NULL, 'pending', 1),
+    ('Felipe Santos', '333.333.333-33', '5511777777777', 'whatsapp', 'Avaliação de Implante', NULL, false, NULL, 'pending', 4)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO web_services (name, price, necessity)

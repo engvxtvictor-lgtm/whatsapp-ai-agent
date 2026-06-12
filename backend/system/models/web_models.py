@@ -14,7 +14,6 @@ class ClientWeb(Base):
     phone: Mapped[str] = mapped_column(String(20), nullable=False)
     source: Mapped[str] = mapped_column(String(20), default="whatsapp")  # whatsapp ou instagram
     service: Mapped[str] = mapped_column(String(50), nullable=False)      # Clareamento, Limpeza, Canal, Implante, etc.
-    profile_pic: Mapped[str] = mapped_column(String(255), nullable=True)
     
     # Agendamento e upsell
     appointment_date: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # texto legado

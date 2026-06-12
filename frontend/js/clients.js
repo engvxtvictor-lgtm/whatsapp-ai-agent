@@ -95,16 +95,15 @@
                    </span>`
                 : '';
 
+            const cleanPhone = client.phone.replace(/\D/g, '');
+
             card.innerHTML = `
                 <input type="checkbox" class="client-card-select" ${isSelected ? 'checked' : ''}>
                 <button class="btn-delete-client" title="Excluir Paciente"><i class="fa-solid fa-trash-can"></i></button>
                 ${statusBadgeHtml}
-                <div class="client-avatar-container">
-                    <img src="${client.profile_pic || 'https://api.dicebear.com/7.x/adventurer/svg?seed=Lumina'}" alt="${client.name}" class="client-avatar" onerror="this.onerror=null;this.src='https://api.dicebear.com/7.x/adventurer/svg?seed=${client.phone}';">
-                </div>
                 <h4 class="client-name">${client.name}</h4>
                 <p class="client-meta"><strong>CPF:</strong> ${client.cpf}</p>
-                <p class="client-meta"><strong>Tel:</strong> ${client.phone}</p>
+                <p class="client-meta"><strong>Tel:</strong> <a href="https://wa.me/${cleanPhone}" target="_blank" class="whatsapp-link"><i class="fa-brands fa-whatsapp"></i> ${client.phone}</a></p>
                 
                 <div class="client-badges">
                     <span class="badge ${channelBadgeClass}">

@@ -20,7 +20,6 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     phone = body.get("phone", "")
     phone_for_reply = body.get("phone_for_reply", "") or phone  # JID completo para resposta (@lid ou @s.whatsapp.net)
     text = body.get("message", "").strip()
-    profile_pic = body.get("profile_pic", None)
     push_name = body.get("push_name", "")
 
     media = body.get("media", None)
@@ -28,19 +27,17 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     if not phone or (not text and not media):
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text, profile_pic, push_name, phone_for_reply, media)
+    bg.add_task(handle, phone, text, push_name, phone_for_reply, media)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = "", phone_for_reply: str = None, media: dict = None):
+async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: str = None, media: dict = None):
     # phone_for_reply: JID completo para enviar respostas (pode ser @lid ou @s.whatsapp.net)
     # phone: número limpo sem sufixo, usado como chave de sessão e no banco de dados
     if not phone_for_reply:
         phone_for_reply = phone
     logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | media={'sim' if media else 'nao'} | '{text[:50]}'")
     session = await sess.get_session(phone)
-    if profile_pic:
-        session["profile_pic"] = profile_pic
     if push_name and not session.get("name"):
         session["name"] = push_name
     # Salva o JID de resposta na sessão para envios futuros
@@ -85,7 +82,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
             "upsell_success": False,
             "upsell_service": None,
             "source": "whatsapp",
-            "profile_pic": profile_pic or None,
             "phone_for_reply": phone_for_reply,
         }
         await sess.save_session(phone, new_session)
@@ -228,7 +224,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service="Atendimento Humano",
-                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={phone}",
                         appointment_date=None,
                         upsell_success=False,
                         upsell_service=None,
@@ -342,7 +337,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service=service_name,
-                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={session.get('name', phone)}",
                         appointment_date=session["appointment_date"],
                         slot_id=slot_id,
                         slot_date=slot_date_obj,
@@ -360,7 +354,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                     existing.name = session["name"]
                     existing.cpf = str(session.get("cpf") or existing.cpf or "000.000.000-00")[:14]
                     existing.service = service_name
-                    existing.profile_pic = session.get("profile_pic") or existing.profile_pic
                     existing.appointment_date = session["appointment_date"]
                     existing.slot_id = slot_id
                     existing.slot_date = slot_date_obj
