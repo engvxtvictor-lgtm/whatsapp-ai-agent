@@ -609,6 +609,58 @@
         </div>
     </div>
 
+    <!-- MODAL: EDITAR PACIENTE -->
+    <div class="modal" id="modal-edit-client">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-user-pen gold-text"></i> Editar Paciente</h3>
+                <button class="modal-close" id="btn-close-edit-client-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-edit-client">
+                <input type="hidden" id="edit-client-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="edit-client-name">Nome do Paciente</label>
+                        <div class="input-with-copy">
+                            <input type="text" id="edit-client-name" required>
+                            <button type="button" class="btn-icon-copy" title="Copiar Nome" onclick="copyToClipboard(document.getElementById('edit-client-name').value)"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-client-cpf">CPF</label>
+                            <div class="input-with-copy">
+                                <input type="text" id="edit-client-cpf">
+                                <button type="button" class="btn-icon-copy" title="Copiar CPF" onclick="copyToClipboard(document.getElementById('edit-client-cpf').value)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-client-phone">Telefone (WhatsApp)</label>
+                            <div class="input-with-copy">
+                                <input type="text" id="edit-client-phone" required>
+                                <button type="button" class="btn-icon-copy" title="Copiar Telefone" onclick="copyToClipboard(document.getElementById('edit-client-phone').value)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-client-service">Serviço Solicitado</label>
+                            <input type="text" id="edit-client-service" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-client-date">Data / Horário de Agendamento</label>
+                            <input type="text" id="edit-client-date">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-edit-client">Sair</button>
+                    <button type="submit" class="btn btn-gold" id="btn-save-edit-client">Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- MODAL: NOVO SLOT DE AGENDA -->
     <div class="modal" id="modal-slot">
         <div class="modal-content">
