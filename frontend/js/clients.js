@@ -104,8 +104,8 @@
                         ${statusBadgeHtml}
                     </div>
                     <div style="display: flex; gap: 8px;">
-                        <button class="btn-edit-client" title="Editar Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(197, 168, 128, 0.1); color: var(--gold-dark); border: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-pen"></i></button>
-                        <button class="btn-delete-client" title="Excluir Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(255, 59, 48, 0.1); color: var(--status-red); border: none; width: 30px; height: 30px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer;"><i class="fa-solid fa-trash-can"></i></button>
+                        <button class="btn-edit-client" title="Editar Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(197, 168, 128, 0.1); color: var(--gold-dark); border: none; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px;"><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn-delete-client" title="Excluir Paciente" style="position: static; opacity: 1; pointer-events: all; background: rgba(255, 59, 48, 0.1); color: var(--status-red); border: none; width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 15px;"><i class="fa-solid fa-trash-can"></i></button>
                     </div>
                 </div>
                 
