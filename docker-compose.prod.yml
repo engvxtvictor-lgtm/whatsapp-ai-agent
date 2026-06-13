@@ -39,6 +39,8 @@ services:
       dockerfile: backend/Dockerfile
     container_name: lumina-backend-prod
     restart: unless-stopped
+    volumes:
+      - backend_uploads_prod:/app/uploads
     env_file:
       - .env
     environment:
@@ -81,4 +83,6 @@ volumes:
   postgres_data_prod:
     driver: local
   redis_data_prod:
+    driver: local
+  backend_uploads_prod:
     driver: local

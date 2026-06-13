@@ -45,6 +45,9 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - backend_uploads:/app/uploads
     environment:
       - DATABASE_URL=postgresql+asyncpg://postgres:postgres@db:5432/agent_db
       - REDIS_URL=redis://redis:6379
@@ -103,4 +106,6 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  backend_uploads:
     driver: local
