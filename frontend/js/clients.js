@@ -110,16 +110,12 @@
                 </div>
                 
                 <h4 class="client-name" style="margin-top: 0;">${client.name}</h4>
-                <p class="client-meta" style="display: flex; align-items: center; gap: 8px;">
-                    <strong>CPF:</strong> ${client.cpf || 'Não informado'}
-                    ${client.cpf ? `<button class="btn-icon-copy-inline" title="Copiar CPF" onclick="copyToClipboard('${client.cpf}')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-regular fa-copy"></i></button>` : ''}
-                </p>
-                <p class="client-meta" style="display: flex; align-items: center; gap: 8px;">
+                <p class="client-meta"><strong>CPF:</strong> ${client.cpf || 'Não informado'}</p>
+                <p class="client-meta">
                     <strong>Tel:</strong> 
                     <a href="https://wa.me/${cleanPhone}" target="_blank" class="whatsapp-link" style="color: var(--whatsapp-green); text-decoration: none; font-weight: 500;">
                         <i class="fa-brands fa-whatsapp"></i> ${client.phone.split(':')[0]}
                     </a>
-                    <button class="btn-icon-copy-inline" title="Copiar Telefone" onclick="copyToClipboard('${cleanPhone}')" style="background: none; border: none; color: var(--text-muted); cursor: pointer;"><i class="fa-regular fa-copy"></i></button>
                 </p>
                 
                 <div class="client-badges">
