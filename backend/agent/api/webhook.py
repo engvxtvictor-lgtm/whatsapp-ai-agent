@@ -391,7 +391,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
 
-    # Atualiza incrementalmente o banco de dados com Nome e CPF se o cliente já existir
+    # Atualiza incrementalmente o banco de dados com Nome e CPF se o cliente já existir,
+    # ou cria um rascunho se tiver nome e CPF mas ainda não terminou o fluxo
     if session.get("name") or session.get("cpf"):
         async with AsyncSession() as db:
             try:
@@ -404,6 +405,21 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     if session.get("cpf"):
                         existing.cpf = str(session["cpf"])[:14]
                     await db.commit()
+                else:
+                    # Se tivermos pelo menos o nome, já criamos um rascunho do paciente no painel
+                    if session.get("name"):
+                        new_client = ClientWeb(
+                            name=session["name"],
+                            cpf=str(session.get("cpf") or "000.000.000-00")[:14],
+                            phone=phone,
+                            source=session.get("source", "whatsapp"),
+                            service=session.get("service") or "Em andamento...",
+                            appointment_date=session.get("appointment_date") or "Pendente",
+                            status="pending"
+                        )
+                        db.add(new_client)
+                        await db.commit()
+                        logger.info("Criou paciente rascunho no DB incremental.")
             except Exception as e:
                 logger.error(f"Erro na atualização incremental do DB: {e}")
 
