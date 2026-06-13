@@ -196,6 +196,9 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         for key in ["name", "cpf", "service", "appointment_date", "slot_date", "slot_time", "upsell_success", "upsell_service", "needs_human"]:
             if metadata.get(key) is not None and metadata.get(key) != "" and metadata.get(key) != "null":
                 if key == "cpf":
+                    # Se já temos um CPF válido (>= 11 chars e sem asteriscos), não deixa a IA sobrescrever com alucinação
+                    if session.get("cpf") and len(str(session["cpf"])) >= 11 and "*" not in str(session["cpf"]):
+                        continue
                     if "*" in str(metadata[key]):
                         continue
                     session[key] = str(metadata[key])[:14]
