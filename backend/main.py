@@ -54,6 +54,10 @@ app.include_router(webhook_router)
 app.include_router(dashboard_router)
 app.include_router(auth_router)
 
+# Servir uploads de forma estática
+os.makedirs("uploads", exist_ok=True)
+app.mount("/uploads", StaticFiles(directory="uploads"), name="uploads")
+
 # Servir documentos (PDFs) como arquivos estáticos
 os.makedirs("backend/agent/docs", exist_ok=True)
 app.mount("/docs-files", StaticFiles(directory="backend/agent/docs"), name="docs")

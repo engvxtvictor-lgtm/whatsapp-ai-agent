@@ -29,6 +29,21 @@
         document.getElementById("admin-email").value = admin.email;
         document.getElementById("admin-role").value = admin.role;
         
+        // Carregar a foto existente no preview, se houver, ou caso contrário manter a seed base do avatar
+        const preview = document.getElementById("admin-avatar-preview");
+        const placeholder = document.getElementById("admin-avatar-placeholder");
+        if (preview && placeholder) {
+            if (admin.avatar && admin.avatar !== "") {
+                preview.src = admin.avatar;
+                preview.style.display = "block";
+                placeholder.style.display = "none";
+            } else {
+                preview.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${admin.name}`;
+                preview.style.display = "block";
+                placeholder.style.display = "none";
+            }
+        }
+        
         document.getElementById("admin-modal-title").innerText = "Editar Administrador";
         document.getElementById("modal-admin").classList.add("active");
     };

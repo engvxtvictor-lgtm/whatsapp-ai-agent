@@ -67,15 +67,76 @@
     });
 
     // Novo Administrador Modal
+    const adminAvatarContainer = document.getElementById("admin-avatar-container");
+    const adminAvatarInput = document.getElementById("admin-avatar-input");
+    const adminAvatarPreview = document.getElementById("admin-avatar-preview");
+    const adminAvatarPlaceholder = document.getElementById("admin-avatar-placeholder");
+    let selectedAvatarFile = null;
+
+    if (adminAvatarContainer && adminAvatarInput) {
+        // Drag and Drop
+        adminAvatarContainer.addEventListener("dragover", (e) => {
+            e.preventDefault();
+            adminAvatarContainer.classList.add("dragover");
+        });
+        adminAvatarContainer.addEventListener("dragleave", () => {
+            adminAvatarContainer.classList.remove("dragover");
+        });
+        adminAvatarContainer.addEventListener("drop", (e) => {
+            e.preventDefault();
+            adminAvatarContainer.classList.remove("dragover");
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleAvatarSelection(e.dataTransfer.files[0]);
+            }
+        });
+        adminAvatarContainer.addEventListener("click", () => {
+            adminAvatarInput.click();
+        });
+        adminAvatarInput.addEventListener("change", (e) => {
+            if (e.target.files && e.target.files[0]) {
+                handleAvatarSelection(e.target.files[0]);
+            }
+        });
+
+        function handleAvatarSelection(file) {
+            if (!file.type.startsWith("image/")) {
+                alert("Por favor, selecione uma imagem.");
+                return;
+            }
+            selectedAvatarFile = file;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                adminAvatarPreview.src = e.target.result;
+                adminAvatarPreview.style.display = "block";
+                adminAvatarPlaceholder.style.display = "none";
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function resetAdminAvatar() {
+        selectedAvatarFile = null;
+        if (adminAvatarInput) adminAvatarInput.value = "";
+        if (adminAvatarPreview) {
+            adminAvatarPreview.src = "";
+            adminAvatarPreview.style.display = "none";
+        }
+        if (adminAvatarPlaceholder) {
+            adminAvatarPlaceholder.style.display = "block";
+        }
+    }
+
     btnAddAdminModal.addEventListener("click", () => {
         document.getElementById("admin-id").value = "";
         document.getElementById("admin-modal-title").innerText = "Adicionar Administrador";
         formAddAdmin.reset();
+        resetAdminAvatar();
         modalAdmin.classList.add("active");
     });
     const closeAdminModal = () => {
         modalAdmin.classList.remove("active");
         formAddAdmin.reset();
+        resetAdminAvatar();
         document.getElementById("admin-id").value = "";
     };
     btnCloseAdminModal.addEventListener("click", closeAdminModal);
@@ -109,6 +170,25 @@
 
             if (response.ok) {
                 const savedAdmin = await response.json();
+                
+                // Upload do Avatar se houver
+                if (selectedAvatarFile) {
+                    const formData = new FormData();
+                    formData.append("file", selectedAvatarFile);
+                    try {
+                        const avatarRes = await fetch(`${API_BASE}/api/admins/${savedAdmin.id}/avatar`, {
+                            method: "POST",
+                            body: formData
+                        });
+                        if (avatarRes.ok) {
+                            const updatedAdmin = await avatarRes.json();
+                            Object.assign(savedAdmin, updatedAdmin);
+                        }
+                    } catch(e) {
+                        console.error("Erro no upload do avatar", e);
+                    }
+                }
+
                 if (isEdit) {
                     const index = allAdmins.findIndex(a => a.id == id);
                     if (index !== -1) allAdmins[index] = savedAdmin;

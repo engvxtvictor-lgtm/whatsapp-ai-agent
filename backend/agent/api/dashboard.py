@@ -1,10 +1,13 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
+import os
+import uuid
+import aiofiles
 from backend.system.database import get_db
 from backend.system.dependencies import get_current_admin
 from backend.system.models.web_models import AdminWeb, ClientWeb, ExamWeb, FollowupWeb, FollowupLogWeb, ScheduleSlotWeb
@@ -408,6 +411,30 @@ async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(admin)
     await db.commit()
     return {"status": "deleted", "id": admin_id}
+
+
+@router.post("/admins/{admin_id}/avatar", response_model=AdminSchema)
+async def upload_admin_avatar(admin_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AdminWeb).where(AdminWeb.id == admin_id))
+    admin = result.scalars().first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Administrador não encontrado.")
+
+    ext = file.filename.split(".")[-1]
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    avatars_dir = os.path.join("uploads", "avatars")
+    os.makedirs(avatars_dir, exist_ok=True)
+    filepath = os.path.join(avatars_dir, filename)
+
+    async with aiofiles.open(filepath, 'wb') as out_file:
+        content = await file.read()
+        await out_file.write(content)
+
+    avatar_url = f"/uploads/avatars/{filename}"
+    admin.avatar = avatar_url
+    await db.commit()
+    await db.refresh(admin)
+    return admin
 
 
 # Rota de Envio de Campanhas

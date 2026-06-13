@@ -113,3 +113,13 @@
     background-color: rgba(197, 168, 128, 0.1);
     color: var(--gold-dark);
 }
+
+/* Avatar Upload Hover */
+.avatar-drag-drop:hover .avatar-hover-overlay,
+.avatar-drag-drop.dragover .avatar-hover-overlay {
+    opacity: 1 !important;
+}
+.avatar-drag-drop.dragover {
+    border-color: var(--gold-primary) !important;
+    background: rgba(197, 168, 128, 0.1) !important;
+}
