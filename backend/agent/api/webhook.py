@@ -1,17 +1,146 @@
 from fastapi import APIRouter, Request, BackgroundTasks
 from sqlalchemy import select, func
+from sqlalchemy.orm import selectinload
 from backend.agent.services import session as sess
 from backend.agent.services import ai_service, faq_service, whatsapp
 from backend.agent.services import schedule_service
 from backend.system.config import settings
 from backend.system.logger import logger
 from backend.system.database import AsyncSession
-from backend.system.models.web_models import ClientWeb, ExamWeb
+from backend.system.models.web_models import ClientWeb, ExamWeb, ScheduleSlotWeb
 import os
 import asyncio
 from datetime import date
 
 router = APIRouter(prefix="/webhook")
+
+
+def _format_client_appointment(client: ClientWeb) -> str:
+    if client.slot_date and client.slot:
+        return f"{client.slot_date.strftime('%d/%m/%Y')} às {client.slot.time_str}"
+    return client.appointment_date or "sem horário definido"
+
+
+async def _available_slots_message(days_ahead: int = 14) -> str:
+    slots = await schedule_service.get_available_slots(days_ahead=days_ahead)
+    if not slots:
+        return "No momento não encontrei horários livres nos próximos dias. Vou pedir para a recepção conferir uma opção para você. 😊"
+    preview = slots[:8]
+    lines = ["Tenho estes horários disponíveis:"]
+    for slot in preview:
+        lines.append(f"• {slot['day_name']} {slot['date_str']} às {slot['time_str']}")
+    lines.append("Pode me responder com uma dessas opções, por exemplo: 15/06 às 10:00.")
+    return "\n".join(lines)
+
+
+async def _slot_has_capacity(db: AsyncSession, slot_id: int, slot_date: date, current_client_id: int | None = None) -> bool:
+    slot_res = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
+    slot = slot_res.scalars().first()
+    if not slot or not slot.is_active:
+        return False
+    count_query = select(func.count(ClientWeb.id)).where(
+        ClientWeb.slot_id == slot_id,
+        ClientWeb.slot_date == slot_date,
+        ClientWeb.status.in_(["pending", "confirmed"])
+    )
+    if current_client_id:
+        count_query = count_query.where(ClientWeb.id != current_client_id)
+    booked_res = await db.execute(count_query)
+    return (booked_res.scalar() or 0) < slot.max_patients
+
+
+async def _handle_appointment_self_service(phone: str, text: str, session: dict, phone_for_reply: str) -> bool:
+    text_lower = text.lower().strip()
+    lookup_keywords = ["histórico", "historico", "minha marcação", "minha marcacao", "meu agendamento", "minha consulta", "verificar acesso", "ver minha agenda", "meu horário", "meu horario"]
+    reschedule_keywords = ["remarcar", "mudar horário", "mudar horario", "trocar horário", "trocar horario", "alterar horário", "alterar horario", "mudar minha consulta", "trocar minha consulta"]
+    wants_lookup = any(keyword in text_lower for keyword in lookup_keywords)
+    wants_reschedule = any(keyword in text_lower for keyword in reschedule_keywords)
+    awaiting_reschedule = bool(session.get("awaiting_reschedule"))
+
+    parsed_date, parsed_time = schedule_service.parse_appointment_text(text)
+    if not (wants_lookup or wants_reschedule or awaiting_reschedule):
+        return False
+
+    async with AsyncSession() as db:
+        result = await db.execute(
+            select(ClientWeb)
+            .options(selectinload(ClientWeb.slot))
+            .where(ClientWeb.phone == phone)
+            .order_by(ClientWeb.id.desc())
+        )
+        client = result.scalars().first()
+
+        if not client:
+            message = (
+                "Ainda não encontrei um agendamento vinculado ao seu WhatsApp. "
+                "Me envie seu nome completo, CPF e o serviço desejado para eu iniciar seu cadastro. 😊"
+            )
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            return True
+
+        if (wants_reschedule or awaiting_reschedule) and parsed_date and parsed_time:
+            slot = await schedule_service.find_slot_by_date_time(parsed_date.isoformat(), parsed_time)
+            if not slot:
+                message = (
+                    f"Encontrei a data {parsed_date.strftime('%d/%m/%Y')} às {parsed_time}, "
+                    "mas esse horário não está cadastrado na agenda da clínica.\n\n"
+                    f"{await _available_slots_message()}"
+                )
+                session["awaiting_reschedule"] = True
+                await sess.save_session(phone, session)
+                await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+                return True
+
+            if not await _slot_has_capacity(db, slot.id, parsed_date, client.id):
+                message = (
+                    f"Esse horário ({parsed_date.strftime('%d/%m/%Y')} às {parsed_time}) já está preenchido.\n\n"
+                    f"{await _available_slots_message()}"
+                )
+                session["awaiting_reschedule"] = True
+                await sess.save_session(phone, session)
+                await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+                return True
+
+            client.slot_id = slot.id
+            client.slot_date = parsed_date
+            client.appointment_date = f"{parsed_date.strftime('%d/%m/%Y')} às {parsed_time}"
+            client.status = "pending"
+            client.needs_human = False
+            await db.commit()
+
+            session["appointment_date"] = client.appointment_date
+            session["slot_date"] = parsed_date.isoformat()
+            session["slot_time"] = parsed_time
+            session["awaiting_reschedule"] = False
+            await sess.save_session(phone, session)
+
+            message = (
+                f"Perfeito! Atualizei sua solicitação para {client.appointment_date}. "
+                "Ela voltou para a recepção aprovar e te confirmar por aqui. 😊"
+            )
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            return True
+
+        appointment = _format_client_appointment(client)
+        status_map = {
+            "pending": "pendente de aprovação",
+            "confirmed": "confirmado",
+            "cancelled": "recusado/cancelado",
+        }
+        status_text = status_map.get(client.status, client.status or "pendente")
+        message = (
+            f"Encontrei seu agendamento de {client.service}: {appointment}.\n"
+            f"Status: {status_text}."
+        )
+        if wants_reschedule:
+            session["awaiting_reschedule"] = True
+            await sess.save_session(phone, session)
+            message += f"\n\n{await _available_slots_message()}"
+        else:
+            message += "\n\nSe quiser remarcar, me diga: quero mudar horário."
+
+        await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+        return True
 
 
 @router.post("/message")
@@ -133,6 +262,9 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     if "instagram" in lower_text or "insta" in lower_text:
         logger.info(f"Origem do cliente detectada como INSTAGRAM via mensagem inicial!")
         session["source"] = "instagram"
+
+    if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
+        return
 
     # 1. tenta FAQ usando o texto censurado
     answer, score = faq_service.search_faq(censored_text)

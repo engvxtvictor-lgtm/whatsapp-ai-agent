@@ -29,6 +29,7 @@ router = APIRouter(prefix="/api")
 
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
+from backend.agent.services import schedule_service
 from backend.agent.services.followup_scheduler import run_followup_check
 from backend.system.logger import logger
 
@@ -236,10 +237,23 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
     client = result.scalars().first()
     if not client:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
-        
+
+    if not client.slot_date and client.appointment_date:
+        found_slot, parsed_slot_date, parsed_slot_time = await schedule_service.resolve_slot_from_text(client.appointment_date)
+        if parsed_slot_date:
+            client.slot_date = parsed_slot_date
+        if found_slot:
+            client.slot_id = found_slot.id
+            client.slot = found_slot
+        if parsed_slot_date and parsed_slot_time:
+            client.appointment_date = f"{parsed_slot_date.strftime('%d/%m/%Y')} às {parsed_slot_time}"
+
     client.status = "confirmed"
     await db.commit()
-    await db.refresh(client)
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id)
+    )
+    client = result.scalars().first()
     
     # Formata data de agendamento usando slot_date se disponível
     appointment_text = client.appointment_date
