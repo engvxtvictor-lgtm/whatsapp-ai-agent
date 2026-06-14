@@ -2,6 +2,7 @@ import re
 import json
 import httpx
 import asyncio
+import unicodedata
 from sqlalchemy import select
 from backend.system.config import settings
 from backend.system.logger import logger
@@ -327,12 +328,45 @@ def _build_simulated_response(message: str, history: list) -> str:
     )
 
 
+def _normalize_service_name(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    normalized = unicodedata.normalize("NFD", value.lower())
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    words = re.findall(r"[a-z0-9]+", normalized)
+    stopwords = {"de", "da", "do", "das", "dos", "por", "para", "com", "em", "a", "o", "e", "sessao"}
+    return {w for w in words if len(w) > 2 and w not in stopwords}
+
+
+def _services_are_similar(primary_service: str | None, upsell_service: str | None) -> bool:
+    primary_words = _normalize_service_name(primary_service)
+    upsell_words = _normalize_service_name(upsell_service)
+    if not primary_words or not upsell_words:
+        return False
+    overlap = primary_words & upsell_words
+    return bool(overlap) or primary_words.issubset(upsell_words) or upsell_words.issubset(primary_words)
+
+
+def _remove_upsell_offer_text(clean_text: str, upsell_service: str) -> str:
+    paragraphs = re.split(r"\n\s*\n", clean_text.strip())
+    kept = [
+        p for p in paragraphs
+        if upsell_service.lower() not in p.lower()
+        and "aproveitando" not in p.lower()
+        and "complemento" not in p.lower()
+        and "serviço adicional" not in p.lower()
+        and "servico adicional" not in p.lower()
+    ]
+    return "\n\n".join(kept).strip() or clean_text
+
+
 def apply_upsell_guardrail(clean_text: str, metadata: dict | None, valid_exam_names: list[str]) -> tuple[str, dict | None]:
     """Valida o serviço de upsell sugerido pela IA contra os exames reais do banco."""
     if not metadata or not metadata.get("upsell_service"):
         return clean_text, metadata
 
     upsell_service = metadata["upsell_service"]
+    primary_service = metadata.get("service")
     
     # Verifica se o serviço de upsell existe nos exames do banco (case insensitive)
     matched_exam = None
@@ -367,6 +401,13 @@ def apply_upsell_guardrail(clean_text: str, metadata: dict | None, valid_exam_na
             metadata["upsell_success"] = False
             metadata["upsell_service"] = None
             
+    final_upsell = metadata.get("upsell_service")
+    if final_upsell and _services_are_similar(primary_service, final_upsell):
+        logger.warning(f"Guardrail de Upsell: removendo upsell igual ao serviço principal '{primary_service}' -> '{final_upsell}'")
+        clean_text = _remove_upsell_offer_text(clean_text, final_upsell)
+        metadata["upsell_success"] = False
+        metadata["upsell_service"] = None
+
     return clean_text, metadata
 
 

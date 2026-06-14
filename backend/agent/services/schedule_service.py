@@ -3,6 +3,7 @@ Serviço de disponibilidade de agenda da Clínica Lúmina.
 Consulta os slots cadastrados, filtra vagas disponíveis e
 formata o contexto para injeção no prompt da IA.
 """
+import re
 from datetime import date, datetime, timedelta
 from sqlalchemy import select, func
 from backend.system.database import AsyncSession
@@ -10,6 +11,23 @@ from backend.system.models.web_models import ScheduleSlotWeb, ClientWeb
 from backend.system.logger import logger
 
 WEEKDAY_NAMES = ["Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado", "Domingo"]
+WEEKDAY_ALIASES = {
+    "segunda": 0,
+    "segunda-feira": 0,
+    "terca": 1,
+    "terça": 1,
+    "terca-feira": 1,
+    "terça-feira": 1,
+    "quarta": 2,
+    "quarta-feira": 2,
+    "quinta": 3,
+    "quinta-feira": 3,
+    "sexta": 4,
+    "sexta-feira": 4,
+    "sabado": 5,
+    "sábado": 5,
+    "domingo": 6,
+}
 
 
 async def get_available_slots(days_ahead: int = 7) -> list[dict]:
@@ -138,3 +156,90 @@ async def find_slot_by_date_time(date_iso: str, time_str: str) -> ScheduleSlotWe
             )
         )
         return res.scalars().first()
+
+
+def normalize_time(time_text: str | None) -> str | None:
+    """Normaliza horarios como 'as 10', '10h' e '10:00' para HH:MM."""
+    if not time_text:
+        return None
+    text = re.sub(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", time_text.lower().strip())
+    match = re.search(r"\b(\d{1,2})[:h](\d{2})?\b", text)
+    if not match:
+        match = re.search(r"\b(?:as|às|a)\s+(\d{1,2})(?:\s*h)?\b", text)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute_text = match.group(2) if len(match.groups()) >= 2 else None
+    minute = int(minute_text or 0)
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        return None
+    return f"{hour:02d}:{minute:02d}"
+
+
+def next_date_for_weekday(weekday: int, from_date: date | None = None) -> date:
+    """Retorna a proxima data futura para o dia da semana informado."""
+    base = from_date or date.today()
+    delta = (weekday - base.weekday()) % 7
+    if delta == 0:
+        delta = 7
+    return base + timedelta(days=delta)
+
+
+def _strip_accents(text: str) -> str:
+    replacements = {
+        "á": "a", "à": "a", "ã": "a", "â": "a",
+        "é": "e", "ê": "e",
+        "í": "i",
+        "ó": "o", "ô": "o", "õ": "o",
+        "ú": "u",
+        "ç": "c",
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def parse_appointment_text(text: str | None, from_date: date | None = None) -> tuple[date | None, str | None]:
+    """
+    Extrai data e horario de textos livres gerados pela IA ou digitados pelo paciente.
+    Suporta '15/06 as 10', '15/06/2026 10:00', 'segunda as 10' e variantes.
+    """
+    if not text:
+        return None, None
+
+    base = from_date or date.today()
+    raw = text.lower()
+    time_str = normalize_time(raw)
+    parsed_date = None
+
+    date_match = re.search(r"\b(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?\b", raw)
+    if date_match:
+        day = int(date_match.group(1))
+        month = int(date_match.group(2))
+        year_text = date_match.group(3)
+        year = int(year_text) if year_text else base.year
+        if year < 100:
+            year += 2000
+        try:
+            parsed_date = date(year, month, day)
+        except ValueError:
+            parsed_date = None
+
+    if not parsed_date:
+        normalized = _strip_accents(raw)
+        for alias, weekday in WEEKDAY_ALIASES.items():
+            alias_norm = _strip_accents(alias)
+            if re.search(rf"\b{re.escape(alias_norm)}\b", normalized):
+                parsed_date = next_date_for_weekday(weekday, base)
+                break
+
+    return parsed_date, time_str
+
+
+async def resolve_slot_from_text(text: str | None) -> tuple[ScheduleSlotWeb | None, date | None, str | None]:
+    """Resolve slot cadastrado a partir de texto livre contendo data e horario."""
+    slot_date, slot_time = parse_appointment_text(text)
+    if not slot_date or not slot_time:
+        return None, slot_date, slot_time
+    slot = await find_slot_by_date_time(slot_date.isoformat(), slot_time)
+    return slot, slot_date, slot_time
