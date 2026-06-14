@@ -337,6 +337,861 @@
         });
     }
 
+    let visibleScheduleMonth = new Date();
+    visibleScheduleMonth.setDate(1);
+
+    function getMonthLabel(date) {
+        return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    }
+
+    function getISODate(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+    }
+
+    function getAppointmentText(client) {
+        if (client.slot_date) {
+            const parts = client.slot_date.split("-");
+            if (parts.length === 3) {
+                return `${parts[2]}/${parts[1]}/${parts[0]}${client.slot_time ? " às " + client.slot_time : ""}`;
+            }
+        }
+        return client.appointment_date || "Sem horário";
+    }
+
+    function renderSlots() {
+        if (!scheduleGridContainer) return;
+
+        const query = slotSearchInput ? slotSearchInput.value.toLowerCase().trim() : "";
+        const monthStart = new Date(visibleScheduleMonth.getFullYear(), visibleScheduleMonth.getMonth(), 1);
+        const monthEnd = new Date(visibleScheduleMonth.getFullYear(), visibleScheduleMonth.getMonth() + 1, 0);
+        const gridStart = new Date(monthStart);
+        gridStart.setDate(monthStart.getDate() - monthStart.getDay());
+        const todayISO = getISODate(new Date());
+
+        const appointmentsByDate = {};
+        allClients.forEach(client => {
+            if (!client.slot_date) return;
+            const haystack = `${client.name || ""} ${client.service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase();
+            if (query && !haystack.includes(query)) return;
+            if (!appointmentsByDate[client.slot_date]) appointmentsByDate[client.slot_date] = [];
+            appointmentsByDate[client.slot_date].push(client);
+        });
+
+        scheduleGridContainer.innerHTML = `
+            <div class="month-calendar-shell">
+                <div class="month-calendar-toolbar">
+                    <button class="btn-calendar-nav" id="btn-schedule-prev" title="Mês anterior"><i class="fa-solid fa-chevron-left"></i></button>
+                    <div>
+                        <h4>${getMonthLabel(visibleScheduleMonth)}</h4>
+                        <span>${monthStart.toLocaleDateString("pt-BR")} a ${monthEnd.toLocaleDateString("pt-BR")}</span>
+                    </div>
+                    <button class="btn-calendar-nav" id="btn-schedule-next" title="Próximo mês"><i class="fa-solid fa-chevron-right"></i></button>
+                    <button class="btn-calendar-today" id="btn-schedule-today">Hoje</button>
+                </div>
+                <div class="month-calendar-weekdays">
+                    <span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span>
+                </div>
+                <div class="month-calendar-grid" id="month-calendar-grid"></div>
+            </div>
+        `;
+
+        const grid = document.getElementById("month-calendar-grid");
+        for (let index = 0; index < 42; index++) {
+            const day = new Date(gridStart);
+            day.setDate(gridStart.getDate() + index);
+            const iso = getISODate(day);
+            const isCurrentMonth = day.getMonth() === visibleScheduleMonth.getMonth();
+            const weekday = (day.getDay() + 6) % 7;
+            const weekdaySlots = allSlots.filter(slot => slot.weekday === weekday && slot.is_active);
+            const appointments = (appointmentsByDate[iso] || []).sort((a, b) => (a.slot_time || "").localeCompare(b.slot_time || ""));
+
+            const appointmentsHtml = appointments.length
+                ? appointments.map(client => {
+                    const statusClass = `status-${client.status || "pending"}`;
+                    const statusLabel = client.status === "confirmed" ? "Confirmado" : client.status === "cancelled" ? "Cancelado" : "Pendente";
+                    return `
+                        <div class="month-appointment ${statusClass}" title="${client.name} - ${getAppointmentText(client)}">
+                            <strong>${client.slot_time || "--:--"}</strong>
+                            <span>${client.name}</span>
+                            <small>${client.service}</small>
+                            <em>${statusLabel}</em>
+                        </div>
+                    `;
+                }).join("")
+                : `<div class="month-empty-day">Sem agendamentos</div>`;
+
+            grid.innerHTML += `
+                <div class="month-day-cell ${isCurrentMonth ? "" : "muted"} ${iso === todayISO ? "today" : ""}">
+                    <div class="month-day-header">
+                        <span>${day.getDate()}</span>
+                        <button class="month-add-slot" data-weekday="${weekday}" title="Adicionar horário neste dia da semana">
+                            <i class="fa-solid fa-plus"></i>
+                        </button>
+                    </div>
+                    <div class="month-day-meta">
+                        ${weekdaySlots.length ? `${weekdaySlots.length} horário(s) ativo(s)` : "Sem grade ativa"}
+                    </div>
+                    <div class="month-day-appointments">${appointmentsHtml}</div>
+                </div>
+            `;
+        }
+
+        document.getElementById("btn-schedule-prev").addEventListener("click", () => {
+            visibleScheduleMonth.setMonth(visibleScheduleMonth.getMonth() - 1);
+            renderSlots();
+        });
+        document.getElementById("btn-schedule-next").addEventListener("click", () => {
+            visibleScheduleMonth.setMonth(visibleScheduleMonth.getMonth() + 1);
+            renderSlots();
+        });
+        document.getElementById("btn-schedule-today").addEventListener("click", () => {
+            visibleScheduleMonth = new Date();
+            visibleScheduleMonth.setDate(1);
+            renderSlots();
+        });
+        scheduleGridContainer.querySelectorAll(".month-add-slot").forEach(btn => {
+            btn.addEventListener("click", (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openAddSlotModal(btn.getAttribute("data-weekday"), "09:00");
+            });
+        });
+    }
+
+    let visibleScheduleWeek = getStartOfWeek(new Date());
+    const GCAL_START_HOUR = 7;
+    const GCAL_END_HOUR = 19;
+    const GCAL_HOUR_HEIGHT = 64;
+
+    function getStartOfWeek(date) {
+        const start = new Date(date);
+        start.setHours(0, 0, 0, 0);
+        start.setDate(start.getDate() - start.getDay());
+        return start;
+    }
+
+    function addDays(date, days) {
+        const next = new Date(date);
+        next.setDate(next.getDate() + days);
+        return next;
+    }
+
+    function getWeekRangeLabel(startDate) {
+        const endDate = addDays(startDate, 6);
+        const sameMonth = startDate.getMonth() === endDate.getMonth();
+        if (sameMonth) {
+            return `${startDate.toLocaleDateString("pt-BR", { month: "long" })} de ${startDate.getFullYear()}`;
+        }
+        return `${startDate.toLocaleDateString("pt-BR", { month: "short" })} - ${endDate.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}`;
+    }
+
+    function getGcalTimeLabel(hour) {
+        if (hour === 0) return "12 AM";
+        if (hour < 12) return `${hour} AM`;
+        if (hour === 12) return "12 PM";
+        return `${hour - 12} PM`;
+    }
+
+    function getClientTime(client) {
+        if (client.slot_time) return client.slot_time;
+        const match = (client.appointment_date || "").match(/\b(\d{1,2})(?::|h)(\d{2})?\b/);
+        if (!match) return null;
+        const hour = String(parseInt(match[1], 10)).padStart(2, "0");
+        const minute = match[2] || "00";
+        return `${hour}:${minute}`;
+    }
+
+    function renderSlots() {
+        if (!scheduleGridContainer) return;
+
+        const query = slotSearchInput ? slotSearchInput.value.toLowerCase().trim() : "";
+        const weekDays = Array.from({ length: 7 }, (_, index) => addDays(visibleScheduleWeek, index));
+        const todayISO = getISODate(new Date());
+        const gridHeight = (GCAL_END_HOUR - GCAL_START_HOUR) * GCAL_HOUR_HEIGHT;
+        const hourRows = Array.from({ length: GCAL_END_HOUR - GCAL_START_HOUR + 1 }, (_, index) => GCAL_START_HOUR + index);
+        const hourGuides = hourRows.slice(0, -1).map((hour, index) => `
+            <div class="gcal-hour-guide" style="top: ${index * GCAL_HOUR_HEIGHT}px;">
+                <span>${getGcalTimeLabel(hour)}</span>
+            </div>
+        `).join("");
+
+        const dayHeaders = weekDays.map(day => {
+            const iso = getISODate(day);
+            return `
+                <div class="gcal-day-header ${iso === todayISO ? "today" : ""}">
+                    <span>${day.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase()}</span>
+                    <strong>${day.getDate()}</strong>
+                </div>
+            `;
+        }).join("");
+
+        const dayColumns = weekDays.map(day => {
+            const iso = getISODate(day);
+            const dayIndex = (day.getDay() + 6) % 7;
+            const activeSlots = allSlots.filter(slot => slot.weekday === dayIndex && slot.is_active);
+            const appointments = allClients
+                .filter(client => client.slot_date === iso)
+                .filter(client => {
+                    if (!query) return true;
+                    return `${client.name || ""} ${client.service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
+                })
+                .sort((a, b) => (getClientTime(a) || "").localeCompare(getClientTime(b) || ""));
+
+            const events = appointments.map(client => {
+                const time = getClientTime(client);
+                if (!time) return "";
+                const [hour, minute] = time.split(":").map(Number);
+                const top = Math.max(0, ((hour - GCAL_START_HOUR) * GCAL_HOUR_HEIGHT) + (minute / 60 * GCAL_HOUR_HEIGHT));
+                const statusLabel = client.status === "confirmed" ? "Confirmado" : client.status === "cancelled" ? "Cancelado" : "Pendente";
+                return `
+                    <div class="gcal-event status-${client.status || "pending"}" style="top: ${top + 4}px; min-height: 46px;" title="${client.name} - ${getAppointmentText(client)}">
+                        <strong>${client.name}</strong>
+                        <span>${time} - ${client.service}</span>
+                        <em>${statusLabel}</em>
+                    </div>
+                `;
+            }).join("");
+
+            return `
+                <div class="gcal-day-column ${iso === todayISO ? "today" : ""}" style="height: ${gridHeight}px;" data-weekday="${dayIndex}">
+                    <div class="gcal-slot-note">${activeSlots.length ? `${activeSlots.length} horário(s)` : ""}</div>
+                    ${events}
+                </div>
+            `;
+        }).join("");
+
+        scheduleGridContainer.innerHTML = `
+            <div class="gcal-shell">
+                <div class="gcal-toolbar">
+                    <button class="gcal-today-btn" id="btn-schedule-today">Hoje</button>
+                    <button class="gcal-nav-btn" id="btn-schedule-prev" title="Semana anterior"><i class="fa-solid fa-chevron-left"></i></button>
+                    <button class="gcal-nav-btn" id="btn-schedule-next" title="Próxima semana"><i class="fa-solid fa-chevron-right"></i></button>
+                    <h4>${getWeekRangeLabel(visibleScheduleWeek)}</h4>
+                    <button class="gcal-view-btn" type="button">Semana <i class="fa-solid fa-caret-down"></i></button>
+                </div>
+                <div class="gcal-board">
+                    <div class="gcal-timezone">GMT-03</div>
+                    <div class="gcal-week-header">${dayHeaders}</div>
+                    <div class="gcal-time-grid" style="height: ${gridHeight}px;">${hourGuides}</div>
+                    <div class="gcal-days-grid" style="height: ${gridHeight}px;">${dayColumns}</div>
+                </div>
+            </div>
+        `;
+
+        document.getElementById("btn-schedule-prev").addEventListener("click", () => {
+            visibleScheduleWeek = addDays(visibleScheduleWeek, -7);
+            renderSlots();
+        });
+        document.getElementById("btn-schedule-next").addEventListener("click", () => {
+            visibleScheduleWeek = addDays(visibleScheduleWeek, 7);
+            renderSlots();
+        });
+        document.getElementById("btn-schedule-today").addEventListener("click", () => {
+            visibleScheduleWeek = getStartOfWeek(new Date());
+            renderSlots();
+        });
+    }
+
+    let gcalVisibleDate = new Date(2026, 5, 14);
+    let gcalViewMode = "week";
+    let gcalViewMenuOpen = false;
+    let gcalShowWeekends = true;
+    let gcalShowCancelled = true;
+    let gcalShowCompleted = true;
+    const gcalFilters = {
+        pending: true,
+        confirmed: true,
+        cancelled: true,
+        human: true
+    };
+    const GCAL2_START_HOUR = 7;
+    const GCAL2_END_HOUR = 19;
+    const GCAL2_HOUR_HEIGHT = 64;
+    let gcalComposer = null;
+    let gcalCustomEvents = [];
+
+    try {
+        gcalCustomEvents = JSON.parse(localStorage.getItem("lumina_gcal_events") || "[]");
+    } catch {
+        gcalCustomEvents = [];
+    }
+
+    function gcalSaveCustomEvents() {
+        localStorage.setItem("lumina_gcal_events", JSON.stringify(gcalCustomEvents));
+    }
+
+    function gcalEscape(value) {
+        return String(value || "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;");
+    }
+
+    function gcalClone(date) {
+        const cloned = new Date(date);
+        cloned.setHours(0, 0, 0, 0);
+        return cloned;
+    }
+
+    function gcalStartOfWeek(date) {
+        const start = gcalClone(date);
+        start.setDate(start.getDate() - start.getDay());
+        return start;
+    }
+
+    function gcalAddDays(date, days) {
+        const next = gcalClone(date);
+        next.setDate(next.getDate() + days);
+        return next;
+    }
+
+    function gcalMonthLabel(date) {
+        return date.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+    }
+
+    function gcalViewLabel() {
+        const labels = {
+            day: "Dia",
+            week: "Semana",
+            month: "Mês",
+            year: "Ano",
+            schedule: "Programação",
+            "4days": "4 dias"
+        };
+        return labels[gcalViewMode] || "Semana";
+    }
+
+    function gcalPeriodLabel() {
+        if (gcalViewMode === "year") return String(gcalVisibleDate.getFullYear());
+        if (gcalViewMode === "month") return gcalMonthLabel(gcalVisibleDate);
+        if (gcalViewMode === "day") {
+            return gcalVisibleDate.toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" });
+        }
+        if (gcalViewMode === "schedule") return "Programação";
+        const start = gcalViewMode === "4days" ? gcalClone(gcalVisibleDate) : gcalStartOfWeek(gcalVisibleDate);
+        const end = gcalAddDays(start, gcalViewMode === "4days" ? 3 : 6);
+        if (start.getMonth() === end.getMonth()) return gcalMonthLabel(start);
+        return `${start.toLocaleDateString("pt-BR", { month: "short" })} - ${end.toLocaleDateString("pt-BR", { month: "short", year: "numeric" })}`;
+    }
+
+    function gcalVisibleDays() {
+        if (gcalViewMode === "day") return [gcalClone(gcalVisibleDate)];
+        const total = gcalViewMode === "4days" ? 4 : 7;
+        const start = gcalViewMode === "4days" ? gcalClone(gcalVisibleDate) : gcalStartOfWeek(gcalVisibleDate);
+        return Array.from({ length: total }, (_, index) => gcalAddDays(start, index))
+            .filter(day => gcalShowWeekends || (day.getDay() !== 0 && day.getDay() !== 6));
+    }
+
+    function gcalShiftPeriod(amount) {
+        if (gcalViewMode === "day") gcalVisibleDate = gcalAddDays(gcalVisibleDate, amount);
+        else if (gcalViewMode === "4days") gcalVisibleDate = gcalAddDays(gcalVisibleDate, amount * 4);
+        else if (gcalViewMode === "month") gcalVisibleDate = new Date(gcalVisibleDate.getFullYear(), gcalVisibleDate.getMonth() + amount, 1);
+        else if (gcalViewMode === "year") gcalVisibleDate = new Date(gcalVisibleDate.getFullYear() + amount, 0, 1);
+        else gcalVisibleDate = gcalAddDays(gcalVisibleDate, amount * 7);
+    }
+
+    function gcalStatusLabel(status) {
+        if (status === "confirmed") return "Confirmado";
+        if (status === "cancelled") return "Cancelado";
+        if (status === "needs_human") return "Atendimento";
+        return "Pendente";
+    }
+
+    function gcalClientTime(client) {
+        return getClientTime(client) || "09:00";
+    }
+
+    function gcalMatchesFilters(client, query) {
+        const status = client.status || "pending";
+        if (status === "cancelled" && (!gcalFilters.cancelled || !gcalShowCancelled)) return false;
+        if (status === "confirmed" && (!gcalFilters.confirmed || !gcalShowCompleted)) return false;
+        if (status === "needs_human" && !gcalFilters.human) return false;
+        if ((status === "pending" || !status) && !gcalFilters.pending) return false;
+        if (!query) return true;
+        return `${client.name || ""} ${client.service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
+    }
+
+    function gcalFilteredAppointments(query = "") {
+        const backendEvents = allClients
+            .filter(client => client.slot_date)
+            .map(client => ({ ...client, gcal_id: `client-${client.id || client.phone || client.slot_date}-${client.slot_time || ""}` }));
+        const customEvents = gcalCustomEvents.map(event => ({
+            id: event.id,
+            gcal_id: event.id,
+            name: event.title || "Sem título",
+            service: event.description || event.calendar || "Evento",
+            slot_date: event.date,
+            slot_time: event.time,
+            appointment_date: event.date,
+            status: event.status || "confirmed",
+            is_custom_event: true,
+            location: event.location || "",
+            guests: event.guests || ""
+        }));
+
+        return [...backendEvents, ...customEvents]
+            .filter(client => client.slot_date)
+            .filter(client => gcalMatchesFilters(client, query))
+            .sort((a, b) => `${a.slot_date} ${gcalClientTime(a)}`.localeCompare(`${b.slot_date} ${gcalClientTime(b)}`));
+    }
+
+    function gcalMiniCalendar() {
+        const monthStart = new Date(gcalVisibleDate.getFullYear(), gcalVisibleDate.getMonth(), 1);
+        const gridStart = gcalAddDays(monthStart, -monthStart.getDay());
+        const selectedISO = getISODate(gcalVisibleDate);
+        const todayISO = getISODate(new Date());
+        const days = Array.from({ length: 42 }, (_, index) => {
+            const day = gcalAddDays(gridStart, index);
+            const iso = getISODate(day);
+            return `
+                <button type="button" class="${day.getMonth() === monthStart.getMonth() ? "" : "muted"} ${iso === selectedISO ? "selected" : ""} ${iso === todayISO ? "today" : ""}" data-gcal-mini-date="${iso}">
+                    ${day.getDate()}
+                </button>
+            `;
+        }).join("");
+
+        return `
+            <div class="gcal-mini-calendar">
+                <div class="gcal-mini-title">
+                    <strong>${gcalMonthLabel(monthStart)}</strong>
+                    <span>
+                        <button type="button" data-gcal-mini-nav="-1"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button type="button" data-gcal-mini-nav="1"><i class="fa-solid fa-chevron-right"></i></button>
+                    </span>
+                </div>
+                <div class="gcal-mini-weekdays"><span>D</span><span>S</span><span>T</span><span>Q</span><span>Q</span><span>S</span><span>S</span></div>
+                <div class="gcal-mini-days">${days}</div>
+            </div>
+        `;
+    }
+
+    function gcalSidebar() {
+        const filters = [
+            ["pending", "#f9ab00", "Pendentes"],
+            ["confirmed", "#0b8043", "Confirmados"],
+            ["cancelled", "#d93025", "Cancelados"],
+            ["human", "#8e24aa", "Atendimento humano"]
+        ].map(([key, color, label]) => `
+            <label class="gcal-calendar-filter">
+                <input type="checkbox" data-gcal-filter="${key}" ${gcalFilters[key] ? "checked" : ""}>
+                <span style="--calendar-color:${color}"></span>
+                ${label}
+            </label>
+        `).join("");
+
+        return `
+            <aside class="gcal-sidebar">
+                <button type="button" class="gcal-create-btn" id="gcal-create-slot"><i class="fa-solid fa-plus"></i> Criar <i class="fa-solid fa-caret-down"></i></button>
+                ${gcalMiniCalendar()}
+                <button type="button" class="gcal-people-btn"><i class="fa-solid fa-user-group"></i> Pesquisar pessoas</button>
+                <div class="gcal-sidebar-section">
+                    <div class="gcal-section-title"><span>Páginas de agendamento de horário</span><button type="button"><i class="fa-solid fa-plus"></i></button></div>
+                </div>
+                <div class="gcal-sidebar-section">
+                    <div class="gcal-section-title"><span>Minhas agendas</span><i class="fa-solid fa-chevron-up"></i></div>
+                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#039be5"></span> Clínica Lumina</label>
+                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#7986cb"></span> Aniversários</label>
+                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#3f51b5"></span> Familia</label>
+                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#4285f4"></span> Tarefas</label>
+                </div>
+                <div class="gcal-sidebar-section">
+                    <div class="gcal-section-title"><span>Filtros da agenda</span><i class="fa-solid fa-chevron-up"></i></div>
+                    ${filters}
+                </div>
+            </aside>
+        `;
+    }
+
+    function gcalViewMenu() {
+        if (!gcalViewMenuOpen) return "";
+        const item = (mode, label, key) => `
+            <button type="button" class="${gcalViewMode === mode ? "active" : ""}" data-gcal-view="${mode}">
+                <span>${label}</span><kbd>${key}</kbd>
+            </button>
+        `;
+        return `
+            <div class="gcal-view-menu">
+                ${item("day", "Dia", "D")}
+                ${item("week", "Semana", "W")}
+                ${item("month", "Mês", "M")}
+                ${item("year", "Ano", "Y")}
+                ${item("schedule", "Programação", "A")}
+                ${item("4days", "4 dias", "X")}
+                <hr>
+                <label><input type="checkbox" id="gcal-toggle-weekends" ${gcalShowWeekends ? "checked" : ""}> Mostrar fins de semana</label>
+                <label><input type="checkbox" id="gcal-toggle-cancelled" ${gcalShowCancelled ? "checked" : ""}> Mostrar eventos recusados</label>
+                <label><input type="checkbox" id="gcal-toggle-completed" ${gcalShowCompleted ? "checked" : ""}> Mostrar tarefas concluídas</label>
+            </div>
+        `;
+    }
+
+    function gcalTimeLabel(hour) {
+        if (hour < 12) return `${hour} AM`;
+        if (hour === 12) return "12 PM";
+        return `${hour - 12} PM`;
+    }
+
+    function gcalTimeGrid(query) {
+        const days = gcalVisibleDays();
+        const todayISO = getISODate(new Date());
+        const gridHeight = (GCAL2_END_HOUR - GCAL2_START_HOUR) * GCAL2_HOUR_HEIGHT;
+        const guides = Array.from({ length: GCAL2_END_HOUR - GCAL2_START_HOUR }, (_, index) => {
+            const hour = GCAL2_START_HOUR + index;
+            return `<div class="gcal-hour-guide" style="top:${index * GCAL2_HOUR_HEIGHT}px;"><span>${gcalTimeLabel(hour)}</span></div>`;
+        }).join("");
+
+        const headers = days.map(day => {
+            const iso = getISODate(day);
+            return `
+                <div class="gcal-day-header ${iso === todayISO ? "today" : ""}">
+                    <span>${day.toLocaleDateString("pt-BR", { weekday: "short" }).replace(".", "").toUpperCase()}</span>
+                    <strong>${day.getDate()}</strong>
+                </div>
+            `;
+        }).join("");
+
+        const appointments = gcalFilteredAppointments(query);
+        const columns = days.map(day => {
+            const iso = getISODate(day);
+            const dayIndex = (day.getDay() + 6) % 7;
+            const activeSlots = allSlots.filter(slot => slot.weekday === dayIndex && slot.is_active);
+            const events = appointments.filter(client => client.slot_date === iso).map(client => {
+                const time = gcalClientTime(client);
+                const [hour, minute] = time.split(":").map(Number);
+                const top = Math.max(0, ((hour - GCAL2_START_HOUR) * GCAL2_HOUR_HEIGHT) + ((minute || 0) / 60 * GCAL2_HOUR_HEIGHT));
+                return `
+                    <div class="gcal-event status-${client.status || "pending"}" data-gcal-event-id="${gcalEscape(client.gcal_id)}" style="top:${top + 4}px; min-height:46px;" title="${gcalEscape(client.name)} - ${gcalEscape(getAppointmentText(client))}">
+                        <strong>${client.name || "Cliente"}</strong>
+                        <span>${time} - ${client.service || "Servico"}</span>
+                        <em>${gcalStatusLabel(client.status)}</em>
+                    </div>
+                `;
+            }).join("");
+            return `
+                <div class="gcal-day-column ${iso === todayISO ? "today" : ""}" data-gcal-column-date="${iso}" style="height:${gridHeight}px;">
+                    <button type="button" class="gcal-column-add" data-weekday="${dayIndex}" data-gcal-column-date="${iso}">+</button>
+                    <div class="gcal-slot-note">${activeSlots.length ? `${activeSlots.length} horario(s)` : ""}</div>
+                    ${events}
+                </div>
+            `;
+        }).join("");
+
+        return `
+            <div class="gcal-board">
+                <div class="gcal-timezone">GMT-03</div>
+                <div class="gcal-week-header" style="grid-template-columns:repeat(${days.length}, minmax(0, 1fr));">${headers}</div>
+                <div class="gcal-time-grid" style="height:${gridHeight}px;">${guides}</div>
+                <div class="gcal-days-grid" style="height:${gridHeight}px; grid-template-columns:repeat(${days.length}, minmax(0, 1fr));">${columns}</div>
+            </div>
+        `;
+    }
+
+    function gcalMonthView(query) {
+        const monthStart = new Date(gcalVisibleDate.getFullYear(), gcalVisibleDate.getMonth(), 1);
+        const gridStart = gcalAddDays(monthStart, -monthStart.getDay());
+        const todayISO = getISODate(new Date());
+        const appointments = gcalFilteredAppointments(query);
+        const cells = Array.from({ length: 42 }, (_, index) => {
+            const day = gcalAddDays(gridStart, index);
+            const iso = getISODate(day);
+            const chips = appointments.filter(client => client.slot_date === iso).slice(0, 4).map(client => `
+                <div class="gcal-month-chip status-${client.status || "pending"}" data-gcal-event-id="${gcalEscape(client.gcal_id)}">
+                    <strong>${gcalClientTime(client)}</strong> ${client.name || "Cliente"}
+                </div>
+            `).join("");
+            return `
+                <button type="button" class="gcal-month-cell ${day.getMonth() === monthStart.getMonth() ? "" : "muted"} ${iso === todayISO ? "today" : ""}" data-gcal-date="${iso}">
+                    <span>${day.getDate()}</span>
+                    ${chips || "<small>Sem eventos</small>"}
+                </button>
+            `;
+        }).join("");
+        return `
+            <div class="gcal-month-view">
+                <div class="gcal-month-weekdays"><span>Dom</span><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sab</span></div>
+                <div class="gcal-month-grid">${cells}</div>
+            </div>
+        `;
+    }
+
+    function gcalScheduleList(query) {
+        const appointments = gcalFilteredAppointments(query);
+        const items = appointments.length ? appointments.map(client => `
+            <div class="gcal-schedule-item status-${client.status || "pending"}">
+                <time>${getAppointmentText(client)}</time>
+                <div><strong>${client.name || "Cliente"}</strong><span>${client.service || "Servico"} - ${gcalStatusLabel(client.status)}</span></div>
+            </div>
+        `).join("") : `<div class="gcal-empty-state">Nenhum agendamento encontrado.</div>`;
+        return `<div class="gcal-schedule-list">${items}</div>`;
+    }
+
+    function gcalYearView(query) {
+        const months = Array.from({ length: 12 }, (_, month) => {
+            const ref = new Date(gcalVisibleDate.getFullYear(), month, 1);
+            const monthAppointments = gcalFilteredAppointments(query).filter(client => {
+                const [year, clientMonth] = (client.slot_date || "").split("-").map(Number);
+                return year === ref.getFullYear() && clientMonth === month + 1;
+            });
+            return `
+                <button type="button" class="gcal-year-month" data-gcal-month="${month}">
+                    <strong>${ref.toLocaleDateString("pt-BR", { month: "long" })}</strong>
+                    <span>${monthAppointments.length} evento(s)</span>
+                </button>
+            `;
+        }).join("");
+        return `<div class="gcal-year-view">${months}</div>`;
+    }
+
+    function gcalOpenComposer(dateISO = getISODate(gcalVisibleDate), time = "09:00", eventId = null) {
+        const existing = eventId ? gcalFilteredAppointments("").find(event => event.gcal_id === eventId) : null;
+        gcalComposer = {
+            id: existing?.is_custom_event ? existing.gcal_id : null,
+            sourceId: eventId,
+            title: existing?.name || "",
+            date: existing?.slot_date || dateISO,
+            time: gcalClientTime(existing || { slot_time: time }),
+            description: existing?.service || "",
+            location: existing?.location || "",
+            guests: existing?.guests || "",
+            readOnly: !!existing && !existing.is_custom_event
+        };
+        gcalViewMenuOpen = false;
+        renderSlots();
+    }
+
+    function gcalComposerHtml() {
+        if (!gcalComposer) return "";
+        const date = gcalComposer.date || getISODate(gcalVisibleDate);
+        const time = gcalComposer.time || "09:00";
+        const title = gcalEscape(gcalComposer.title);
+        const description = gcalEscape(gcalComposer.description);
+        const location = gcalEscape(gcalComposer.location);
+        const guests = gcalEscape(gcalComposer.guests);
+        return `
+            <div class="gcal-composer-backdrop">
+                <form class="gcal-composer" id="gcal-composer-form">
+                    <div class="gcal-composer-drag"><i class="fa-solid fa-grip-lines"></i><button type="button" id="gcal-composer-close"><i class="fa-solid fa-xmark"></i></button></div>
+                    <input class="gcal-composer-title" id="gcal-composer-title" placeholder="Adicionar título e horário" value="${title}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                    <div class="gcal-composer-tabs">
+                        <button type="button" class="active">Evento</button>
+                        <button type="button">Tarefa</button>
+                    </div>
+                    <label class="gcal-composer-row">
+                        <i class="fa-regular fa-clock"></i>
+                        <span>
+                            <input type="date" id="gcal-composer-date" value="${date}" ${gcalComposer.readOnly ? "disabled" : ""}>
+                            <input type="time" id="gcal-composer-time" value="${time}" ${gcalComposer.readOnly ? "disabled" : ""}>
+                            <button type="button" class="gcal-soft-btn">Adicionar horário</button>
+                        </span>
+                    </label>
+                    <label class="gcal-composer-row">
+                        <i class="fa-regular fa-user"></i>
+                        <input id="gcal-composer-guests" placeholder="Adicionar convidados" value="${guests}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                    </label>
+                    <label class="gcal-composer-row">
+                        <i class="fa-solid fa-video"></i>
+                        <button type="button" class="gcal-meet-btn">Adicionar videoconferência do Google Meet</button>
+                    </label>
+                    <label class="gcal-composer-row">
+                        <i class="fa-solid fa-location-dot"></i>
+                        <input id="gcal-composer-location" placeholder="Adicionar local" value="${location}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                    </label>
+                    <label class="gcal-composer-row">
+                        <i class="fa-solid fa-align-left"></i>
+                        <input id="gcal-composer-description" placeholder="Adicionar descrição ou anexo do Google Drive" value="${description}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                    </label>
+                    <div class="gcal-composer-row">
+                        <i class="fa-regular fa-calendar"></i>
+                        <span><strong>Clínica Lumina</strong><small>Livre · Visibilidade padrão · Notificar 5min antes</small></span>
+                    </div>
+                    <div class="gcal-composer-actions">
+                        ${gcalComposer.id && !gcalComposer.readOnly ? `<button type="button" class="gcal-delete-btn" id="gcal-composer-delete">Excluir</button>` : ""}
+                        <button type="button" class="gcal-more-btn">Mais opções</button>
+                        ${gcalComposer.readOnly ? "" : `<button type="submit" class="gcal-save-btn">Salvar</button>`}
+                    </div>
+                </form>
+            </div>
+        `;
+    }
+
+    function gcalRenderView(query) {
+        if (gcalViewMode === "month") return gcalMonthView(query);
+        if (gcalViewMode === "year") return gcalYearView(query);
+        if (gcalViewMode === "schedule") return gcalScheduleList(query);
+        return gcalTimeGrid(query);
+    }
+
+    function gcalBindControls() {
+        document.getElementById("gcal-prev")?.addEventListener("click", () => {
+            gcalShiftPeriod(-1);
+            gcalViewMenuOpen = false;
+            renderSlots();
+        });
+        document.getElementById("gcal-next")?.addEventListener("click", () => {
+            gcalShiftPeriod(1);
+            gcalViewMenuOpen = false;
+            renderSlots();
+        });
+        document.getElementById("gcal-today")?.addEventListener("click", () => {
+            gcalVisibleDate = new Date();
+            gcalViewMenuOpen = false;
+            renderSlots();
+        });
+        document.getElementById("gcal-view-button")?.addEventListener("click", () => {
+            gcalViewMenuOpen = !gcalViewMenuOpen;
+            renderSlots();
+        });
+        scheduleGridContainer.querySelectorAll("[data-gcal-view]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                gcalViewMode = btn.getAttribute("data-gcal-view");
+                gcalViewMenuOpen = false;
+                renderSlots();
+            });
+        });
+        scheduleGridContainer.querySelectorAll("[data-gcal-mini-date]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const [year, month, day] = btn.getAttribute("data-gcal-mini-date").split("-").map(Number);
+                gcalVisibleDate = new Date(year, month - 1, day);
+                gcalViewMenuOpen = false;
+                renderSlots();
+            });
+        });
+        scheduleGridContainer.querySelectorAll(".gcal-month-cell").forEach(btn => {
+            btn.addEventListener("click", (event) => {
+                const eventEl = event.target.closest("[data-gcal-event-id]");
+                if (eventEl) {
+                    gcalOpenComposer(btn.getAttribute("data-gcal-date"), gcalClientTime({ slot_time: "09:00" }), eventEl.getAttribute("data-gcal-event-id"));
+                    return;
+                }
+                const [year, month, day] = btn.getAttribute("data-gcal-date").split("-").map(Number);
+                gcalVisibleDate = new Date(year, month - 1, day);
+                gcalOpenComposer(btn.getAttribute("data-gcal-date"), "09:00");
+            });
+        });
+        scheduleGridContainer.querySelectorAll(".gcal-day-column").forEach(column => {
+            column.addEventListener("click", (event) => {
+                if (event.target.closest(".gcal-column-add")) return;
+                const eventEl = event.target.closest("[data-gcal-event-id]");
+                if (eventEl) {
+                    gcalOpenComposer(column.getAttribute("data-gcal-column-date"), "09:00", eventEl.getAttribute("data-gcal-event-id"));
+                    return;
+                }
+                const rect = column.getBoundingClientRect();
+                const y = Math.max(0, event.clientY - rect.top);
+                const rawHour = GCAL2_START_HOUR + (y / GCAL2_HOUR_HEIGHT);
+                const hour = Math.min(GCAL2_END_HOUR - 1, Math.max(GCAL2_START_HOUR, Math.floor(rawHour)));
+                const minute = (rawHour - hour) >= 0.5 ? "30" : "00";
+                gcalOpenComposer(column.getAttribute("data-gcal-column-date"), `${String(hour).padStart(2, "0")}:${minute}`);
+            });
+        });
+        scheduleGridContainer.querySelectorAll("[data-gcal-mini-nav]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const amount = parseInt(btn.getAttribute("data-gcal-mini-nav"), 10);
+                gcalVisibleDate = new Date(gcalVisibleDate.getFullYear(), gcalVisibleDate.getMonth() + amount, 1);
+                renderSlots();
+            });
+        });
+        scheduleGridContainer.querySelectorAll("[data-gcal-filter]").forEach(input => {
+            input.addEventListener("change", () => {
+                gcalFilters[input.getAttribute("data-gcal-filter")] = input.checked;
+                renderSlots();
+            });
+        });
+        scheduleGridContainer.querySelectorAll("[data-gcal-month]").forEach(btn => {
+            btn.addEventListener("click", () => {
+                gcalVisibleDate = new Date(gcalVisibleDate.getFullYear(), parseInt(btn.getAttribute("data-gcal-month"), 10), 1);
+                gcalViewMode = "month";
+                renderSlots();
+            });
+        });
+        document.getElementById("gcal-toggle-weekends")?.addEventListener("change", (event) => {
+            gcalShowWeekends = event.target.checked;
+            renderSlots();
+        });
+        document.getElementById("gcal-toggle-cancelled")?.addEventListener("change", (event) => {
+            gcalShowCancelled = event.target.checked;
+            renderSlots();
+        });
+        document.getElementById("gcal-toggle-completed")?.addEventListener("change", (event) => {
+            gcalShowCompleted = event.target.checked;
+            renderSlots();
+        });
+        document.getElementById("gcal-create-slot")?.addEventListener("click", () => gcalOpenComposer(getISODate(gcalVisibleDate), "09:00"));
+        scheduleGridContainer.querySelectorAll(".gcal-column-add").forEach(btn => {
+            btn.addEventListener("click", (event) => {
+                event.stopPropagation();
+                gcalOpenComposer(btn.getAttribute("data-gcal-column-date") || getISODate(gcalVisibleDate), "09:00");
+            });
+        });
+        document.getElementById("gcal-composer-close")?.addEventListener("click", () => {
+            gcalComposer = null;
+            renderSlots();
+        });
+        document.getElementById("gcal-composer-delete")?.addEventListener("click", () => {
+            if (!gcalComposer?.id) return;
+            gcalCustomEvents = gcalCustomEvents.filter(item => item.id !== gcalComposer.id);
+            gcalSaveCustomEvents();
+            gcalComposer = null;
+            renderSlots();
+            showToast("Evento excluído", "O evento foi removido da agenda.", "success");
+        });
+        document.getElementById("gcal-composer-form")?.addEventListener("submit", (event) => {
+            event.preventDefault();
+            if (!gcalComposer || gcalComposer.readOnly) return;
+            const title = document.getElementById("gcal-composer-title").value.trim() || "Sem título";
+            const date = document.getElementById("gcal-composer-date").value || getISODate(gcalVisibleDate);
+            const time = document.getElementById("gcal-composer-time").value || "09:00";
+            const guests = document.getElementById("gcal-composer-guests").value.trim();
+            const location = document.getElementById("gcal-composer-location").value.trim();
+            const description = document.getElementById("gcal-composer-description").value.trim();
+            const id = gcalComposer.id || `custom-${Date.now()}`;
+            const nextEvent = { id, title, date, time, guests, location, description, status: "confirmed", calendar: "Clínica Lumina" };
+            gcalCustomEvents = gcalCustomEvents.filter(item => item.id !== id).concat(nextEvent);
+            gcalSaveCustomEvents();
+            gcalComposer = null;
+            gcalVisibleDate = new Date(`${date}T00:00:00`);
+            renderSlots();
+            showToast("Evento salvo", "O evento foi adicionado à agenda.", "success");
+        });
+    }
+
+    function renderSlots() {
+        if (!scheduleGridContainer) return;
+        const query = slotSearchInput ? slotSearchInput.value.toLowerCase().trim() : "";
+        scheduleGridContainer.innerHTML = `
+            <div class="gcal-app-shell">
+                ${gcalSidebar()}
+                <section class="gcal-main-panel">
+                    <div class="gcal-toolbar gcal-toolbar-full">
+                        <button type="button" class="gcal-icon-btn" title="Menu"><i class="fa-solid fa-bars"></i></button>
+                        <div class="gcal-brand"><span>13</span><strong>Agenda</strong></div>
+                        <button type="button" class="gcal-today-btn" id="gcal-today">Hoje</button>
+                        <button type="button" class="gcal-nav-btn" id="gcal-prev" title="Anterior"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button type="button" class="gcal-nav-btn" id="gcal-next" title="Próximo"><i class="fa-solid fa-chevron-right"></i></button>
+                        <h4>${gcalPeriodLabel()}</h4>
+                        <button type="button" class="gcal-icon-btn" title="Pesquisar"><i class="fa-solid fa-magnifying-glass"></i></button>
+                        <button type="button" class="gcal-icon-btn" title="Ajuda"><i class="fa-regular fa-circle-question"></i></button>
+                        <button type="button" class="gcal-icon-btn" title="Configurações"><i class="fa-solid fa-gear"></i></button>
+                        <div class="gcal-view-menu-wrap">
+                            <button type="button" class="gcal-view-btn" id="gcal-view-button">${gcalViewLabel()} <i class="fa-solid fa-caret-down"></i></button>
+                            ${gcalViewMenu()}
+                        </div>
+                        <button type="button" class="gcal-task-toggle active" title="Agenda"><i class="fa-regular fa-calendar-days"></i></button>
+                        <button type="button" class="gcal-task-toggle" title="Tarefas"><i class="fa-regular fa-circle-check"></i></button>
+                        <button type="button" class="gcal-icon-btn" title="Apps"><i class="fa-solid fa-grip"></i></button>
+                    </div>
+                    ${gcalRenderView(query)}
+                    ${gcalComposerHtml()}
+                </section>
+            </div>
+        `;
+        gcalBindControls();
+    }
+
     if (formAddSlot) {
         formAddSlot.addEventListener("submit", async (e) => {
             e.preventDefault();
