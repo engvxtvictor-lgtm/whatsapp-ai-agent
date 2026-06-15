@@ -364,8 +364,10 @@ def _build_simulated_response(message: str, history: list) -> str:
     else:
         if not history:
             response = (
-                "Olá! Eu sou a Lúmina, atendente virtual da Clínica Lúmina. 😊\n"
-                "Como posso ajudar você hoje? Se quiser agendar uma consulta, por favor me informe o seu *Nome Completo e CPF* para eu fazer o seu cadastro!"
+                "Olá! 👋✨\n"
+                "Seja bem-vindo(a) à Lumina Clínica Odontológica 🦷✨\n\n"
+                "Será um prazer cuidar do seu sorriso!\n\n"
+                "Como podemos te ajudar hoje?"
             )
         else:
             response = (

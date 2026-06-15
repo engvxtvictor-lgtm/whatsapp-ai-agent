@@ -14,6 +14,76 @@ from datetime import date
 
 router = APIRouter(prefix="/webhook")
 
+INITIAL_GREETING = (
+    "Olá! 👋✨\n"
+    "Seja bem-vindo(a) à Lumina Clínica Odontológica 🦷✨\n\n"
+    "Será um prazer cuidar do seu sorriso!\n\n"
+    "Como podemos te ajudar hoje?"
+)
+
+SERVICES_PDF_INTRO = "Vou te enviar nossa tabela com os procedimentos que realizamos e seus respectivos valores. 📋✨"
+
+LOCATION_MESSAGE = (
+    "📍 Segue a localização da nossa clínica:\n\n"
+    "https://maps.app.goo.gl/fqcbXNXctnfnT7Rn6?g_st=ic\n\n"
+    "Será um prazer receber você! 🦷✨"
+)
+
+SERVICES_PDF_KEYWORDS = [
+    "valor", "valores", "preço", "precos", "preço", "preços", "quanto custa",
+    "custa quanto", "orçamento", "orcamento", "tabela", "procedimento",
+    "procedimentos", "serviço", "servicos", "serviço", "serviços", "exame",
+    "exames", "catálogo", "catalogo", "pdf"
+]
+
+LOCATION_KEYWORDS = [
+    "endereço", "endereco", "localização", "localizacao", "localizaçao",
+    "onde fica", "mapa", "maps", "rota", "chegar", "como chegar",
+    "local", "fica onde"
+]
+
+
+def _contains_any(text_lower: str, keywords: list[str]) -> bool:
+    return any(keyword in text_lower for keyword in keywords)
+
+
+def _wants_services_pdf(text: str) -> bool:
+    return _contains_any(text.lower(), SERVICES_PDF_KEYWORDS)
+
+
+def _wants_location(text: str) -> bool:
+    return _contains_any(text.lower(), LOCATION_KEYWORDS)
+
+
+async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
+    await whatsapp.send_message(phone, SERVICES_PDF_INTRO, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "assistant", SERVICES_PDF_INTRO)
+
+    pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
+    if not os.path.exists(pdf_path):
+        logger.warning(f"PDF de serviços não encontrado em {pdf_path}")
+        return session
+
+    base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+    if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
+        base_url = "http://backend:8000"
+
+    pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
+    logger.info(f"Enviando PDF de serviços para {phone[:6]}*** via {pdf_url}")
+    await whatsapp.send_document(
+        phone=phone,
+        pdf_url=pdf_url,
+        filename=settings.SERVICES_PDF_FILENAME,
+        caption=SERVICES_PDF_INTRO,
+        reply_jid=reply_jid
+    )
+    session["services_pdf_sent"] = True
+    return await sess.add_to_history(
+        session,
+        "assistant",
+        f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n{SERVICES_PDF_INTRO}"
+    )
+
 
 def _format_client_appointment(client: ClientWeb) -> str:
     if client.slot_date and client.slot:
@@ -214,19 +284,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             "phone_for_reply": phone_for_reply,
         }
         await sess.save_session(phone, new_session)
-        reset_msg = "Tudo bem! 😊 Vou começar um novo atendimento para você. Acabei de enviar novamente o nosso catálogo logo abaixo. Qual serviço chamou sua atenção?"
-        await whatsapp.send_message(phone, reset_msg, reply_jid=phone_for_reply)
-        # Reenvia o PDF
-        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
-        if os.path.exists(pdf_path):
-            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
-            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
-                base_url = "http://backend:8000"
-            pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
-            await whatsapp.send_document(phone=phone, pdf_url=pdf_url, filename=settings.SERVICES_PDF_FILENAME, caption="📄 Segue nossa tabela completa de serviços e valores!", reply_jid=phone_for_reply)
+        await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
+        new_session = await sess.add_to_history(new_session, "assistant", INITIAL_GREETING)
+        await sess.save_session(phone, new_session)
         logger.info(f"Sessão reiniciada por comando do usuário: {phone[:6]}***")
-        
-        # Deleta do painel se o serviço ainda for Atendimento Humano ou nulo (resetando o paciente)
+
         async with AsyncSession() as db:
             try:
                 stmt = select(ClientWeb).where(ClientWeb.phone == phone)
@@ -238,8 +300,19 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     logger.info(f"Cliente {phone} removido do painel (zera/reiniciar).")
             except Exception as e:
                 logger.error(f"Erro ao remover cliente do painel no reset: {e}")
-                
+
         return
+
+    if session.get("escalated"):
+        async with AsyncSession() as db:
+            result = await db.execute(select(ClientWeb).where(ClientWeb.phone == phone))
+            client_record = result.scalars().first()
+            if not client_record or not client_record.needs_human:
+                logger.info(f"Sessão escalada antiga liberada para IA: {phone[:6]}***")
+                session["escalated"] = False
+                session["needs_human"] = False
+                session["ai_attempts"] = 0
+                await sess.save_session(phone, session)
 
     if session["escalated"]:
         # Se o usuário manda mensagem com reset enquanto escalado, deixa o reset funcionar normalmente (já tratado acima).
@@ -266,6 +339,26 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
         return
 
+    if _wants_location(text):
+        await whatsapp.send_message(phone, LOCATION_MESSAGE, reply_jid=phone_for_reply)
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await sess.add_to_history(session, "assistant", LOCATION_MESSAGE)
+        await sess.save_session(phone, session)
+        return
+
+    if _wants_services_pdf(text):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _send_services_pdf(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
+
+    if is_first_message and not user_requested_human:
+        await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await sess.add_to_history(session, "assistant", INITIAL_GREETING)
+        await sess.save_session(phone, session)
+        return
+
     # 1. tenta FAQ usando o texto censurado
     answer, score = faq_service.search_faq(censored_text)
     if answer and score >= 0.6:
@@ -288,7 +381,16 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     if not needs_human_trigger:
         # 2. consulta IA usando o texto censurado
         context = faq_service.get_context(censored_text)
-        response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context, media=media)
+        try:
+            response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context, media=media)
+        except Exception as e:
+            logger.error(f"Erro ao consultar IA para {phone[:6]}***: {e}")
+            response = (
+                "Tive uma instabilidade para consultar as informações agora. "
+                "Vou chamar nossa equipe para te ajudar por aqui. 🧡"
+            )
+            confidence = 1.0
+            metadata = {"needs_human": True}
         
         # Atualiza o gatilho caso a IA tenha decidido transferir
         if metadata and metadata.get("needs_human") is True:
@@ -387,29 +489,6 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
 
         # Audita a resposta em background sem bloquear o usuário
         asyncio.create_task(ai_service.audit_response_in_background(text, sent_response))
-
-        # Envia o PDF de serviços na primeira mensagem do paciente
-        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
-        if is_first_message and os.path.exists(pdf_path):
-            # Resolve o problema do docker-compose injetar localhost
-            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
-            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
-                base_url = "http://backend:8000"
-                
-            pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
-            logger.info(f"Enviando PDF de serviços para {phone[:6]}*** via {pdf_url}")
-            await whatsapp.send_document(
-                phone=phone,
-                pdf_url=pdf_url,
-                filename=settings.SERVICES_PDF_FILENAME,
-                caption="📄 Segue nossa tabela completa de serviços e valores!",
-                reply_jid=session.get("phone_for_reply")
-            )
-            session = await sess.add_to_history(
-                session, 
-                "assistant", 
-                f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n📄 Segue nossa tabela completa de serviços e valores!"
-            )
 
     # 3. Registro Automático se os dados essenciais estiverem preenchidos (CPF é opcional)
     has_name = bool(session.get("name"))
