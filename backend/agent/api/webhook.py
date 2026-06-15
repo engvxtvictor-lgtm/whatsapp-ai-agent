@@ -10,6 +10,7 @@ from backend.system.database import AsyncSession
 from backend.system.models.web_models import ClientWeb, ExamWeb, ScheduleSlotWeb
 import os
 import asyncio
+import unicodedata
 from datetime import date
 
 router = APIRouter(prefix="/webhook")
@@ -42,6 +43,18 @@ LOCATION_KEYWORDS = [
     "local", "fica onde"
 ]
 
+APPOINTMENT_INTENT_KEYWORDS = [
+    "consulta", "consultar", "agendar", "agendamento", "marcar", "horario",
+    "horário", "atendimento", "avaliacao", "avaliação"
+]
+
+GENERIC_SERVICE_NAMES = {
+    "consulta", "consulta odontologica", "consulta odontológica", "avaliacao",
+    "avaliação", "atendimento", "atendimento humano", "em andamento",
+    "em andamento...", "procedimento", "servico", "serviço", "exame",
+    "aguardando procedimento"
+}
+
 
 def _contains_any(text_lower: str, keywords: list[str]) -> bool:
     return any(keyword in text_lower for keyword in keywords)
@@ -53,6 +66,46 @@ def _wants_services_pdf(text: str) -> bool:
 
 def _wants_location(text: str) -> bool:
     return _contains_any(text.lower(), LOCATION_KEYWORDS)
+
+
+def _normalize_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = unicodedata.normalize("NFD", str(value).strip().lower())
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = " ".join(text.replace(".", " ").replace("-", " ").split())
+    return text
+
+
+def _is_generic_service(value: str | None) -> bool:
+    normalized = _normalize_label(value)
+    return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
+
+
+def _has_real_service(session: dict) -> bool:
+    return bool(session.get("service")) and not _is_generic_service(session.get("service"))
+
+
+def _wants_appointment_without_service(text: str, session: dict) -> bool:
+    text_lower = text.lower()
+    if _has_real_service(session):
+        return False
+    return _contains_any(text_lower, APPOINTMENT_INTENT_KEYWORDS)
+
+
+async def _ask_for_service_before_scheduling(phone: str, reply_jid: str, session: dict) -> dict:
+    session["service"] = None
+    session["appointment_date"] = None
+    session["slot_date"] = None
+    session["slot_time"] = None
+    if not session.get("services_pdf_sent"):
+        session = await _send_services_pdf(phone, reply_jid, session)
+    message = (
+        "Antes de marcar o horário, preciso saber qual procedimento você deseja realizar. "
+        "Pode escolher um da tabela ou escrever outro procedimento, se não estiver na lista. 😊"
+    )
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    return await sess.add_to_history(session, "assistant", message)
 
 
 def _valid_cpf(value: str | None) -> bool:
@@ -370,6 +423,12 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         await sess.save_session(phone, session)
         return
 
+    if _wants_appointment_without_service(text, session):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
+
     if is_first_message and not user_requested_human:
         await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
         session = await sess.add_to_history(session, "user", censored_text)
@@ -457,6 +516,9 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 else:
                     session[key] = metadata[key]
 
+    if _is_generic_service(session.get("service")):
+        session["service"] = None
+
     direct_date, direct_time = schedule_service.parse_appointment_text(text)
     if direct_date and direct_time and not session.get("appointment_date"):
         session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
@@ -471,6 +533,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
 
     # Adicionar mensagem do usuário à história da sessão
     session = await sess.add_to_history(session, "user", censored_text)
+
+    if session.get("appointment_date") and not _has_real_service(session):
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
 
     if needs_human_trigger:
         await whatsapp.send_escalation(phone, reply_jid=session.get("phone_for_reply"))
@@ -526,13 +593,17 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
 
     # 3. Registro Automático se os dados essenciais estiverem preenchidos (CPF é opcional)
     has_name = bool(session.get("name"))
-    has_service = bool(session.get("service"))
+    has_service = _has_real_service(session)
     has_date = bool(session.get("appointment_date"))
     logger.info(f"[REGISTRO] name={session.get('name')!r} service={session.get('service')!r} date={session.get('appointment_date')!r} cpf={'****' if session.get('cpf') else None}")
     if has_name and has_service and has_date:
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 existing = result.scalars().first()
 
@@ -645,7 +716,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     if session.get("name") or session.get("cpf"):
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 existing = result.scalars().first()
                 if existing:
@@ -663,8 +738,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                             cpf=str(session.get("cpf") or "000.000.000-00")[:14],
                             phone=phone,
                             source=session.get("source", "whatsapp"),
-                            service=session.get("service") or "Em andamento...",
-                            appointment_date=session.get("appointment_date") or "Pendente",
+                            service=session.get("service") if _has_real_service(session) else "Aguardando procedimento",
+                            appointment_date=session.get("appointment_date") if _has_real_service(session) else None,
                             status="pending"
                         )
                         db.add(new_client)

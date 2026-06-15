@@ -304,7 +304,7 @@ def _build_simulated_response(message: str, history: list) -> str:
     # Detecção de Serviço
     service = None
     services_list = ["limpeza", "clareamento", "aparelho", "implante", "canal", "restauração", "extração", "bruxismo", "faceta", "prótese"]
-    services_list.extend(["consulta", "avaliação", "avaliacao", "restauracao", "extracao", "protese"])
+    services_list.extend(["restauracao", "extracao", "protese"])
     for msg in reversed(user_msgs):
         msg_l = msg.lower()
         for s in services_list:

@@ -232,7 +232,12 @@
                             client.status = "confirmed";
                             loadData(); // Recarrega lista
                         } else {
-                            alert("Falha ao confirmar consulta.");
+                            let message = "Falha ao confirmar consulta.";
+                            try {
+                                const errorData = await response.json();
+                                if (errorData.detail) message = errorData.detail;
+                            } catch (_) {}
+                            alert(message);
                             btnConfirm.disabled = false;
                             btnConfirm.innerHTML = `<i class="fa-solid fa-check"></i> Aceitar`;
                         }

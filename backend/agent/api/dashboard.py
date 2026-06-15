@@ -8,6 +8,7 @@ import asyncio
 import os
 import uuid
 import aiofiles
+import unicodedata
 from datetime import date
 from backend.system.database import get_db
 from backend.system.dependencies import get_current_admin
@@ -83,6 +84,28 @@ class AdminSchema(BaseModel):
 class CampaignSchema(BaseModel):
     client_ids: List[int]
     message: str
+
+
+GENERIC_SERVICE_NAMES = {
+    "consulta", "consulta odontologica", "consulta odontológica", "avaliacao",
+    "avaliação", "atendimento", "atendimento humano", "em andamento",
+    "em andamento...", "procedimento", "servico", "serviço", "exame",
+    "aguardando procedimento"
+}
+
+
+def _normalize_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = unicodedata.normalize("NFD", str(value).strip().lower())
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = " ".join(text.replace(".", " ").replace("-", " ").split())
+    return text
+
+
+def _is_generic_service(value: str | None) -> bool:
+    normalized = _normalize_label(value)
+    return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
 
 
 async def resolve_client_slot_data(client_data: ClientSchema):
@@ -269,6 +292,12 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
     if not client:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
 
+    if _is_generic_service(client.service):
+        raise HTTPException(
+            status_code=400,
+            detail="Informe o procedimento/serviço real antes de confirmar este agendamento."
+        )
+
     if not client.slot_date and client.appointment_date:
         found_slot, parsed_slot_date, parsed_slot_time = await schedule_service.resolve_slot_from_text(client.appointment_date)
         if parsed_slot_date:
@@ -278,6 +307,12 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
             client.slot = found_slot
         if parsed_slot_date and parsed_slot_time:
             client.appointment_date = f"{parsed_slot_date.strftime('%d/%m/%Y')} às {parsed_slot_time}"
+
+    if not client.slot_date or not client.appointment_date or _normalize_label(client.appointment_date) == "pendente":
+        raise HTTPException(
+            status_code=400,
+            detail="Informe uma data e horario validos antes de confirmar este agendamento."
+        )
 
     client.status = "confirmed"
     await db.commit()
