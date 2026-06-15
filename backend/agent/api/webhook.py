@@ -11,6 +11,7 @@ from backend.system.models.web_models import ClientWeb, ExamWeb, ScheduleSlotWeb
 import os
 import asyncio
 import unicodedata
+import re
 from datetime import date
 
 router = APIRouter(prefix="/webhook")
@@ -55,6 +56,24 @@ GENERIC_SERVICE_NAMES = {
     "aguardando procedimento"
 }
 
+SERVICE_MATCH_STOPWORDS = {
+    "consulta", "consultar", "agendamento", "agendar", "atendimento",
+    "avaliacao", "avaliacao", "procedimento", "procedimentos", "servico",
+    "servicos", "exame", "exames", "gostaria", "queria", "quero", "marcar"
+}
+
+ACKNOWLEDGEMENT_WORDS = {
+    "ok", "okay", "certo", "beleza", "blz", "ta", "tá", "sim", "pode",
+    "entendi", "combinado", "perfeito"
+}
+
+CONFIRMATION_WORDS = {
+    "sim", "pode", "confirmar", "confirmo", "quero", "isso", "esse",
+    "essa", "ok", "certo", "fechado", "perfeito"
+}
+
+REJECTION_WORDS = {"nao", "não", "outro", "trocar", "mudar", "prefiro"}
+
 
 def _contains_any(text_lower: str, keywords: list[str]) -> bool:
     return any(keyword in text_lower for keyword in keywords)
@@ -80,6 +99,30 @@ def _normalize_label(value: str | None) -> str:
 def _is_generic_service(value: str | None) -> bool:
     normalized = _normalize_label(value)
     return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
+
+
+def _is_acknowledgement(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return normalized in {_normalize_label(item) for item in ACKNOWLEDGEMENT_WORDS}
+
+
+def _is_confirmation_text(text: str) -> bool:
+    normalized = _normalize_label(text)
+    words = set(normalized.split())
+    return bool(words & {_normalize_label(item) for item in CONFIRMATION_WORDS})
+
+
+def _is_rejection_text(text: str) -> bool:
+    normalized = _normalize_label(text)
+    words = set(normalized.split())
+    return bool(words & {_normalize_label(item) for item in REJECTION_WORDS})
+
+
+def _strip_premature_upsell(text: str) -> str:
+    if not text:
+        return text
+    parts = re.split(r"\n?\s*(?:al[eé]m disso|aproveitando)[,\s]+", text, flags=re.IGNORECASE, maxsplit=1)
+    return parts[0].rstrip() if parts else text
 
 
 def _has_real_service(session: dict) -> bool:
@@ -128,10 +171,11 @@ def _service_matches_text(text: str, service_name: str) -> bool:
     service_norm = _normalize_label(service_name)
     if not text_norm or not service_norm:
         return False
-    if text_norm in service_norm or service_norm in text_norm:
+    if text_norm not in SERVICE_MATCH_STOPWORDS and (text_norm in service_norm or service_norm in text_norm):
         return True
-    text_words = {word for word in text_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5}
-    service_words = {word for word in service_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5}
+    stopwords = {_normalize_label(item) for item in SERVICE_MATCH_STOPWORDS}
+    text_words = {word for word in text_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5 and word not in stopwords}
+    service_words = {word for word in service_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5 and word not in stopwords}
     return bool(text_words & service_words)
 
 
@@ -148,8 +192,10 @@ async def _detect_service_from_text(text: str, allow_custom: bool = False) -> tu
             return exam.name, exam.id
 
     text_norm = _normalize_label(text)
-    if allow_custom and text_norm and len(text_norm) >= 4 and not schedule_service.parse_appointment_text(text)[0]:
-        return str(text).strip().title(), None
+    custom_prefixes = ("outro", "outros", "nao esta na lista", "não está na lista", "nao tem na lista", "não tem na lista")
+    if allow_custom and text_norm and not _is_acknowledgement(text) and text_norm.startswith(custom_prefixes) and not schedule_service.parse_appointment_text(text)[0]:
+        custom = str(text).replace(":", " ", 1).strip()
+        return custom.title(), None
     return None, None
 
 
@@ -438,6 +484,21 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         logger.info(f"Origem do cliente detectada como INSTAGRAM via mensagem inicial!")
         session["source"] = "instagram"
 
+    if session.get("awaiting_slot_confirmation"):
+        if _is_rejection_text(text):
+            session["appointment_date"] = None
+            session["slot_date"] = None
+            session["slot_time"] = None
+            session["awaiting_slot_confirmation"] = False
+            message = "Sem problemas. Me diga outro dia e horário que você prefere para eu verificar na agenda. 😊"
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            session = await sess.add_to_history(session, "user", censored_text)
+            session = await sess.add_to_history(session, "assistant", message)
+            await sess.save_session(phone, session)
+            return
+        if _is_confirmation_text(text):
+            session["awaiting_slot_confirmation"] = False
+
     if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
         return
 
@@ -463,6 +524,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         session["awaiting_service"] = False
         if detected_exam_id:
             session["exam_id"] = detected_exam_id
+    elif session.get("awaiting_service"):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
 
     if _wants_appointment_without_service(text, session):
         session = await sess.add_to_history(session, "user", censored_text)
@@ -568,6 +634,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     direct_date, direct_time = schedule_service.parse_appointment_text(text)
     if direct_date and direct_time and not session.get("appointment_date"):
         session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+        if not _is_confirmation_text(text):
+            session["awaiting_slot_confirmation"] = True
 
     if session.get("appointment_date") and (not session.get("slot_date") or not session.get("slot_time")):
         if not direct_date or not direct_time:
@@ -576,6 +644,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             session["slot_date"] = direct_date.isoformat()
             session["slot_time"] = direct_time
             session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+            if text.strip() and not _is_confirmation_text(text) and schedule_service.parse_appointment_text(text)[0]:
+                session["awaiting_slot_confirmation"] = True
 
     # Adicionar mensagem do usuário à história da sessão
     session = await sess.add_to_history(session, "user", censored_text)
@@ -628,6 +698,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     else:
         # Enviar resposta da IA
         sent_response = response
+        if session.get("awaiting_slot_confirmation"):
+            sent_response = _strip_premature_upsell(sent_response)
         if confidence < settings.AI_CONFIDENCE_THRESHOLD:
             sent_response += "\n\n_Caso queira falar com um atendente, é só pedir!_"
             
@@ -640,7 +712,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     # 3. Registro Automático se os dados essenciais estiverem preenchidos (CPF é opcional)
     has_name = bool(session.get("name"))
     has_service = _has_real_service(session)
-    has_date = bool(session.get("appointment_date"))
+    has_date = bool(session.get("appointment_date")) and not session.get("awaiting_slot_confirmation")
     logger.info(f"[REGISTRO] name={session.get('name')!r} service={session.get('service')!r} date={session.get('appointment_date')!r} cpf={'****' if session.get('cpf') else None}")
     if has_name and has_service and has_date:
         async with AsyncSession() as db:
@@ -787,7 +859,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                             phone=phone,
                             source=session.get("source", "whatsapp"),
                             service=session.get("service") if _has_real_service(session) else "Aguardando procedimento",
-                            appointment_date=session.get("appointment_date") if _has_real_service(session) else None,
+                            appointment_date=session.get("appointment_date") if _has_real_service(session) and not session.get("awaiting_slot_confirmation") else None,
                             status="pending"
                         )
                         db.add(new_client)
