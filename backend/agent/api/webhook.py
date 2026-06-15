@@ -98,6 +98,7 @@ async def _ask_for_service_before_scheduling(phone: str, reply_jid: str, session
     session["appointment_date"] = None
     session["slot_date"] = None
     session["slot_time"] = None
+    session["awaiting_service"] = True
     if not session.get("services_pdf_sent"):
         session = await _send_services_pdf(phone, reply_jid, session)
     message = (
@@ -122,6 +123,36 @@ def _client_lookup_filter(phone: str, cpf: str | None = None):
     return or_(*filters)
 
 
+def _service_matches_text(text: str, service_name: str) -> bool:
+    text_norm = _normalize_label(text)
+    service_norm = _normalize_label(service_name)
+    if not text_norm or not service_norm:
+        return False
+    if text_norm in service_norm or service_norm in text_norm:
+        return True
+    text_words = {word for word in text_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5}
+    service_words = {word for word in service_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5}
+    return bool(text_words & service_words)
+
+
+async def _detect_service_from_text(text: str, allow_custom: bool = False) -> tuple[str | None, int | None]:
+    if _is_generic_service(text):
+        return None, None
+
+    async with AsyncSession() as db:
+        result = await db.execute(select(ExamWeb))
+        exams = result.scalars().all()
+
+    for exam in exams:
+        if _service_matches_text(text, exam.name):
+            return exam.name, exam.id
+
+    text_norm = _normalize_label(text)
+    if allow_custom and text_norm and len(text_norm) >= 4 and not schedule_service.parse_appointment_text(text)[0]:
+        return str(text).strip().title(), None
+    return None, None
+
+
 async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
     await whatsapp.send_message(phone, SERVICES_PDF_INTRO, reply_jid=reply_jid)
     session = await sess.add_to_history(session, "assistant", SERVICES_PDF_INTRO)
@@ -141,7 +172,7 @@ async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
         phone=phone,
         pdf_url=pdf_url,
         filename=settings.SERVICES_PDF_FILENAME,
-        caption=SERVICES_PDF_INTRO,
+        caption="",
         reply_jid=reply_jid
     )
     session["services_pdf_sent"] = True
@@ -423,6 +454,16 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         await sess.save_session(phone, session)
         return
 
+    detected_service, detected_exam_id = await _detect_service_from_text(
+        text,
+        allow_custom=bool(session.get("awaiting_service"))
+    )
+    if detected_service:
+        session["service"] = detected_service
+        session["awaiting_service"] = False
+        if detected_exam_id:
+            session["exam_id"] = detected_exam_id
+
     if _wants_appointment_without_service(text, session):
         session = await sess.add_to_history(session, "user", censored_text)
         session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
@@ -513,6 +554,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     if "*" in str(metadata[key]):
                         continue
                     session[key] = str(metadata[key])[:14]
+                elif key == "service":
+                    if _is_generic_service(metadata[key]):
+                        continue
+                    session[key] = metadata[key]
+                    session["awaiting_service"] = False
                 else:
                     session[key] = metadata[key]
 
@@ -613,7 +659,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 exams_res = await db.execute(select(ExamWeb))
                 exams = exams_res.scalars().all()
                 for exam in exams:
-                    if (service_name.lower() in exam.name.lower()) or (exam.name.lower() in service_name.lower()):
+                    if _service_matches_text(service_name, exam.name):
                         exam_id = exam.id
                         service_name = exam.name
                         break
@@ -729,6 +775,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                         existing.name = session["name"]
                     if session.get("cpf"):
                         existing.cpf = str(session["cpf"])[:14]
+                    if _has_real_service(session):
+                        existing.service = session["service"]
                     await db.commit()
                 else:
                     # Se tivermos pelo menos o nome, já criamos um rascunho do paciente no painel
