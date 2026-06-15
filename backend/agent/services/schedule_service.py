@@ -208,7 +208,8 @@ def _strip_accents(text: str) -> str:
 def parse_appointment_text(text: str | None, from_date: date | None = None) -> tuple[date | None, str | None]:
     """
     Extrai data e horario de textos livres gerados pela IA ou digitados pelo paciente.
-    Suporta '15/06 as 10', '15/06/2026 10:00', 'segunda as 10' e variantes.
+    Suporta '15/06 as 10', '15/06/2026 10:00', 'segunda as 10',
+    'hoje', 'amanha' e variantes.
     """
     if not text:
         return None, None
@@ -231,8 +232,17 @@ def parse_appointment_text(text: str | None, from_date: date | None = None) -> t
         except ValueError:
             parsed_date = None
 
+    normalized = _strip_accents(raw)
+
     if not parsed_date:
-        normalized = _strip_accents(raw)
+        if re.search(r"\bdepois\s+d[ae]\s+amanha\b|\bdepois\s+de\s+amanha\b", normalized):
+            parsed_date = base + timedelta(days=2)
+        elif re.search(r"\bamanha\b", normalized):
+            parsed_date = base + timedelta(days=1)
+        elif re.search(r"\bhoje\b", normalized):
+            parsed_date = base
+
+    if not parsed_date:
         for alias, weekday in WEEKDAY_ALIASES.items():
             alias_norm = _strip_accents(alias)
             if re.search(rf"\b{re.escape(alias_norm)}\b", normalized):

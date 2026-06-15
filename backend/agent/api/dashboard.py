@@ -251,7 +251,11 @@ async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSess
     client.appointment_date = client_data.appointment_date
     client.slot_id = slot_id
     client.slot_date = slot_date_obj
+    client.upsell_success = client_data.upsell_success
+    client.upsell_service = client_data.upsell_service
+    client.status = client_data.status or client.status
     client.exam_id = client_data.exam_id
+    client.needs_human = client_data.needs_human
     
     await db.commit()
     await db.refresh(client)

@@ -536,7 +536,7 @@
                 .filter(client => client.slot_date === iso)
                 .filter(client => {
                     if (!query) return true;
-                    return `${client.name || ""} ${client.service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
+                    return `${client.name || ""} ${client.service || ""} ${client.upsell_service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
                 })
                 .sort((a, b) => (getClientTime(a) || "").localeCompare(getClientTime(b) || ""));
 
@@ -549,7 +549,7 @@
                 return `
                     <div class="gcal-event status-${client.status || "pending"}" style="top: ${top + 4}px; min-height: 46px;" title="${client.name} - ${getAppointmentText(client)}">
                         <strong>${client.name}</strong>
-                        <span>${time} - ${client.service}</span>
+                        <span>${time} - ${gcalServiceSummary(client)}</span>
                         <em>${statusLabel}</em>
                     </div>
                 `;
@@ -712,7 +712,14 @@
         if (status === "needs_human" && !gcalFilters.human) return false;
         if ((status === "pending" || !status) && !gcalFilters.pending) return false;
         if (!query) return true;
-        return `${client.name || ""} ${client.service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
+        return `${client.name || ""} ${client.service || ""} ${client.upsell_service || ""} ${client.slot_time || ""} ${client.status || ""}`.toLowerCase().includes(query);
+    }
+
+    function gcalServiceSummary(client) {
+        const mainService = client.service || "Servico";
+        const extraService = client.upsell_success && client.upsell_service ? client.upsell_service : "";
+        if (!extraService || extraService.toLowerCase() === mainService.toLowerCase()) return mainService;
+        return `${mainService} + ${extraService}`;
     }
 
     function gcalFilteredAppointments(query = "") {
@@ -859,7 +866,7 @@
                 return `
                     <div class="gcal-event status-${client.status || "pending"}" data-gcal-event-id="${gcalEscape(client.gcal_id)}" style="top:${top + 4}px; min-height:46px;" title="${gcalEscape(client.name)} - ${gcalEscape(getAppointmentText(client))}">
                         <strong>${client.name || "Cliente"}</strong>
-                        <span>${time} - ${client.service || "Servico"}</span>
+                        <span>${time} - ${gcalServiceSummary(client)}</span>
                         <em>${gcalStatusLabel(client.status)}</em>
                     </div>
                 `;
@@ -916,7 +923,7 @@
         const items = appointments.length ? appointments.map(client => `
             <div class="gcal-schedule-item status-${client.status || "pending"}">
                 <time>${getAppointmentText(client)}</time>
-                <div><strong>${client.name || "Cliente"}</strong><span>${client.service || "Servico"} - ${gcalStatusLabel(client.status)}</span></div>
+                <div><strong>${client.name || "Cliente"}</strong><span>${gcalServiceSummary(client)} - ${gcalStatusLabel(client.status)}</span></div>
             </div>
         `).join("") : `<div class="gcal-empty-state">Nenhum agendamento encontrado.</div>`;
         return `<div class="gcal-schedule-list">${items}</div>`;
@@ -943,16 +950,21 @@
         const existing = eventId ? gcalFilteredAppointments("").find(event => event.gcal_id === eventId) : null;
         gcalComposer = {
             id: existing?.is_custom_event ? existing.gcal_id : null,
+            backendId: existing && !existing.is_custom_event ? existing.id : null,
             sourceId: eventId,
             name: existing?.name || "",
             cpf: existing?.cpf || "",
             phone: existing?.phone || "",
             examId: existing?.exam_id || "",
             service: existing?.service || "",
+            upsellService: existing?.upsell_service || "",
             date: existing?.slot_date || dateISO,
             time: gcalClientTime(existing || { slot_time: time }),
             notes: existing?.notes || "",
-            readOnly: !!existing && !existing.is_custom_event
+            status: existing?.status || "pending",
+            source: existing?.source || "whatsapp",
+            needsHuman: !!existing?.needs_human,
+            readOnly: false
         };
         gcalViewMenuOpen = false;
         renderSlots();
@@ -985,6 +997,7 @@
         const phone = gcalEscape(gcalComposer.phone);
         const notes = gcalEscape(gcalComposer.notes);
         const service = gcalEscape(gcalComposer.service);
+        const upsellService = gcalEscape(gcalComposer.upsellService || "");
         const isReadOnly = gcalComposer.readOnly;
         const showCustomService = gcalComposer.service && !(allExams || []).some(exam => exam.name === gcalComposer.service || String(exam.id) === String(gcalComposer.examId));
         return `
@@ -992,8 +1005,8 @@
                 <form class="gcal-composer" id="gcal-composer-form">
                     <div class="gcal-composer-drag"><i class="fa-solid fa-grip-lines"></i><button type="button" id="gcal-composer-close"><i class="fa-solid fa-xmark"></i></button></div>
                     <div class="gcal-composer-heading">
-                        <strong>${isReadOnly ? "Agendamento do paciente" : "Novo agendamento"}</strong>
-                        <span>${isReadOnly ? "Dados registrados no painel" : "Preencha os dados para criar a solicitacao"}</span>
+                        <strong>${gcalComposer.backendId ? "Editar agendamento" : "Novo agendamento"}</strong>
+                        <span>${gcalComposer.backendId ? "Atualize os dados registrados no painel" : "Preencha os dados para criar a solicitacao"}</span>
                     </div>
                     <label class="gcal-composer-row">
                         <i class="fa-regular fa-clock"></i>
@@ -1025,11 +1038,15 @@
                         <input id="gcal-composer-custom-service" placeholder="Digite o procedimento desejado" value="${showCustomService ? service : ""}" ${isReadOnly ? "readonly" : ""}>
                     </label>
                     <label class="gcal-composer-row">
+                        <i class="fa-solid fa-plus"></i>
+                        <input id="gcal-composer-upsell" placeholder="Servico adicional (opcional)" value="${upsellService}" ${isReadOnly ? "readonly" : ""}>
+                    </label>
+                    <label class="gcal-composer-row">
                         <i class="fa-solid fa-align-left"></i>
                         <textarea id="gcal-composer-notes" placeholder="Observacao interna (opcional)" ${isReadOnly ? "readonly" : ""}>${notes}</textarea>
                     </label>
                     <div class="gcal-composer-actions">
-                        ${isReadOnly ? "" : `<button type="submit" class="gcal-save-btn">Criar agendamento</button>`}
+                        ${isReadOnly ? "" : `<button type="submit" class="gcal-save-btn">${gcalComposer.backendId ? "Salvar alteracoes" : "Criar agendamento"}</button>`}
                     </div>
                 </form>
             </div>
@@ -1178,6 +1195,7 @@
             const rawExamId = serviceSelect.value && serviceSelect.value !== "__other__" ? parseInt(serviceSelect.value, 10) : NaN;
             const examId = Number.isFinite(rawExamId) ? rawExamId : null;
             const customService = document.getElementById("gcal-composer-custom-service")?.value.trim() || "";
+            const upsellService = document.getElementById("gcal-composer-upsell")?.value.trim() || "";
             const service = serviceSelect.value === "__other__"
                 ? customService
                 : (selectedOption?.dataset?.service || selectedOption?.textContent?.trim() || serviceSelect.dataset.currentService || "");
@@ -1197,16 +1215,17 @@
                 appointment_date: `${day}/${month}/${year} às ${time}`,
                 slot_date: date,
                 slot_time: time,
-                upsell_success: false,
-                upsell_service: null,
-                status: "pending",
+                upsell_success: !!upsellService,
+                upsell_service: upsellService || null,
+                status: gcalComposer.status || "pending",
                 exam_id: examId,
-                needs_human: false
+                needs_human: !!gcalComposer.needsHuman
             };
 
             try {
-                const res = await fetch(`${API_BASE}/api/clients`, {
-                    method: "POST",
+                const isUpdatingBackend = !!gcalComposer.backendId;
+                const res = await fetch(`${API_BASE}/api/clients${isUpdatingBackend ? `/${gcalComposer.backendId}` : ""}`, {
+                    method: isUpdatingBackend ? "PUT" : "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload)
                 });
@@ -1219,7 +1238,7 @@
                 gcalComposer = null;
                 gcalVisibleDate = new Date(`${date}T00:00:00`);
                 renderSlots();
-                showToast("Agendamento criado", "O paciente foi adicionado a agenda.", "success");
+                showToast(isUpdatingBackend ? "Agendamento atualizado" : "Agendamento criado", isUpdatingBackend ? "Os dados foram salvos na agenda." : "O paciente foi adicionado a agenda.", "success");
             } catch (error) {
                 console.error("Erro ao criar agendamento pela agenda:", error);
                 showToast("Erro ao salvar", error.message || "Erro ao conectar com o servidor.", "error");
