@@ -298,6 +298,9 @@ async def _handle_requested_slot(phone: str, text: str, session: dict, reply_jid
     session["slot_time"] = requested_time
     session["pending_slot_date"] = requested_date.isoformat()
     session["awaiting_slot_confirmation"] = True
+    session["confirmed_service"] = session["service"]
+    if session.get("exam_id"):
+        session["confirmed_exam_id"] = session["exam_id"]
     message = _appointment_confirmation_message(session)
     await whatsapp.send_message(phone, message, reply_jid=reply_jid)
     session = await sess.add_to_history(session, "user", text)
@@ -558,6 +561,10 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             return
         if _is_confirmation_text(text):
             session["awaiting_slot_confirmation"] = False
+            if session.get("confirmed_service"):
+                session["service"] = session["confirmed_service"]
+            if session.get("confirmed_exam_id"):
+                session["exam_id"] = session["confirmed_exam_id"]
             skip_ai_response = True
 
     if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
@@ -685,6 +692,8 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                         continue
                     session[key] = str(metadata[key])[:14]
                 elif key == "service":
+                    if session.get("confirmed_service"):
+                        continue
                     if _is_generic_service(metadata[key]):
                         continue
                     session[key] = metadata[key]
@@ -790,15 +799,16 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 existing = result.scalars().first()
 
                 # Resolve exam_id
-                exam_id = None
-                service_name = session["service"]
-                exams_res = await db.execute(select(ExamWeb))
-                exams = exams_res.scalars().all()
-                for exam in exams:
-                    if _service_matches_text(service_name, exam.name):
-                        exam_id = exam.id
-                        service_name = exam.name
-                        break
+                exam_id = session.get("confirmed_exam_id") or session.get("exam_id")
+                service_name = session.get("confirmed_service") or session["service"]
+                if not exam_id:
+                    exams_res = await db.execute(select(ExamWeb))
+                    exams = exams_res.scalars().all()
+                    for exam in exams:
+                        if _service_matches_text(service_name, exam.name):
+                            exam_id = exam.id
+                            service_name = exam.name
+                            break
 
                 # Resolve slot_id e slot_date a partir dos metadados capturados
                 slot_id = None
