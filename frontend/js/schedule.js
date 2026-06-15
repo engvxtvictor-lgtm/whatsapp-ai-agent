@@ -951,67 +951,85 @@
         gcalComposer = {
             id: existing?.is_custom_event ? existing.gcal_id : null,
             sourceId: eventId,
-            title: existing?.name || "",
+            name: existing?.name || "",
+            cpf: existing?.cpf || "",
+            phone: existing?.phone || "",
+            examId: existing?.exam_id || "",
+            service: existing?.service || "",
             date: existing?.slot_date || dateISO,
             time: gcalClientTime(existing || { slot_time: time }),
-            description: existing?.service || "",
-            location: existing?.location || "",
-            guests: existing?.guests || "",
+            notes: existing?.notes || "",
             readOnly: !!existing && !existing.is_custom_event
         };
         gcalViewMenuOpen = false;
         renderSlots();
     }
 
+    function gcalServiceOptions(selectedExamId = "", selectedService = "") {
+        const selectedId = selectedExamId ? String(selectedExamId) : "";
+        const options = (allExams || []).map(exam => {
+            const value = String(exam.id);
+            const selected = selectedId === value || (!selectedId && selectedService === exam.name) ? "selected" : "";
+            return `<option value="${gcalEscape(value)}" data-service="${gcalEscape(exam.name)}" ${selected}>${gcalEscape(exam.name)}</option>`;
+        }).join("");
+
+        if (options) {
+            return `<option value="">Selecione o procedimento...</option>${options}`;
+        }
+
+        const fallback = selectedService || "Consulta odontologica";
+        return `<option value="${gcalEscape(fallback)}" data-service="${gcalEscape(fallback)}" selected>${gcalEscape(fallback)}</option>`;
+    }
+
     function gcalComposerHtml() {
         if (!gcalComposer) return "";
         const date = gcalComposer.date || getISODate(gcalVisibleDate);
         const time = gcalComposer.time || "09:00";
-        const title = gcalEscape(gcalComposer.title);
-        const description = gcalEscape(gcalComposer.description);
-        const location = gcalEscape(gcalComposer.location);
-        const guests = gcalEscape(gcalComposer.guests);
+        const name = gcalEscape(gcalComposer.name);
+        const cpf = gcalEscape(gcalComposer.cpf);
+        const phone = gcalEscape(gcalComposer.phone);
+        const notes = gcalEscape(gcalComposer.notes);
+        const service = gcalEscape(gcalComposer.service);
+        const isReadOnly = gcalComposer.readOnly;
         return `
             <div class="gcal-composer-backdrop">
                 <form class="gcal-composer" id="gcal-composer-form">
                     <div class="gcal-composer-drag"><i class="fa-solid fa-grip-lines"></i><button type="button" id="gcal-composer-close"><i class="fa-solid fa-xmark"></i></button></div>
-                    <input class="gcal-composer-title" id="gcal-composer-title" placeholder="Adicionar título e horário" value="${title}" ${gcalComposer.readOnly ? "readonly" : ""}>
-                    <div class="gcal-composer-tabs">
-                        <button type="button" class="active">Evento</button>
-                        <button type="button">Tarefa</button>
+                    <div class="gcal-composer-heading">
+                        <strong>${isReadOnly ? "Agendamento do paciente" : "Novo agendamento"}</strong>
+                        <span>${isReadOnly ? "Dados registrados no painel" : "Preencha os dados para criar a solicitacao"}</span>
                     </div>
                     <label class="gcal-composer-row">
                         <i class="fa-regular fa-clock"></i>
                         <span>
-                            <input type="date" id="gcal-composer-date" value="${date}" ${gcalComposer.readOnly ? "disabled" : ""}>
-                            <input type="time" id="gcal-composer-time" value="${time}" ${gcalComposer.readOnly ? "disabled" : ""}>
-                            <button type="button" class="gcal-soft-btn">Adicionar horário</button>
+                            <input type="date" id="gcal-composer-date" value="${date}" ${isReadOnly ? "disabled" : ""} required>
+                            <input type="time" id="gcal-composer-time" value="${time}" ${isReadOnly ? "disabled" : ""} required>
                         </span>
                     </label>
                     <label class="gcal-composer-row">
                         <i class="fa-regular fa-user"></i>
-                        <input id="gcal-composer-guests" placeholder="Adicionar convidados" value="${guests}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                        <input id="gcal-composer-name" placeholder="Nome completo do paciente" value="${name}" ${isReadOnly ? "readonly" : ""} required>
                     </label>
                     <label class="gcal-composer-row">
-                        <i class="fa-solid fa-video"></i>
-                        <button type="button" class="gcal-meet-btn">Adicionar videoconferência do Google Meet</button>
+                        <i class="fa-regular fa-id-card"></i>
+                        <input id="gcal-composer-cpf" placeholder="CPF" value="${cpf}" ${isReadOnly ? "readonly" : ""} required>
                     </label>
                     <label class="gcal-composer-row">
-                        <i class="fa-solid fa-location-dot"></i>
-                        <input id="gcal-composer-location" placeholder="Adicionar local" value="${location}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                        <i class="fa-brands fa-whatsapp"></i>
+                        <input id="gcal-composer-phone" placeholder="Telefone / WhatsApp" value="${phone}" ${isReadOnly ? "readonly" : ""} required>
+                    </label>
+                    <label class="gcal-composer-row">
+                        <i class="fa-solid fa-tooth"></i>
+                        <select id="gcal-composer-service" ${isReadOnly ? "disabled" : ""} required data-current-service="${service}">
+                            ${gcalServiceOptions(gcalComposer.examId, gcalComposer.service)}
+                        </select>
                     </label>
                     <label class="gcal-composer-row">
                         <i class="fa-solid fa-align-left"></i>
-                        <input id="gcal-composer-description" placeholder="Adicionar descrição ou anexo do Google Drive" value="${description}" ${gcalComposer.readOnly ? "readonly" : ""}>
+                        <textarea id="gcal-composer-notes" placeholder="Observacao interna (opcional)" ${isReadOnly ? "readonly" : ""}>${notes}</textarea>
                     </label>
-                    <div class="gcal-composer-row">
-                        <i class="fa-regular fa-calendar"></i>
-                        <span><strong>Clínica Lumina</strong><small>Livre · Visibilidade padrão · Notificar 5min antes</small></span>
-                    </div>
                     <div class="gcal-composer-actions">
-                        ${gcalComposer.id && !gcalComposer.readOnly ? `<button type="button" class="gcal-delete-btn" id="gcal-composer-delete">Excluir</button>` : ""}
-                        <button type="button" class="gcal-more-btn">Mais opções</button>
-                        ${gcalComposer.readOnly ? "" : `<button type="submit" class="gcal-save-btn">Salvar</button>`}
+                        ${isReadOnly ? "" : `<button type="submit" class="gcal-save-btn">Criar agendamento</button>`}
                     </div>
                 </form>
             </div>
@@ -1139,23 +1157,62 @@
             renderSlots();
             showToast("Evento excluído", "O evento foi removido da agenda.", "success");
         });
-        document.getElementById("gcal-composer-form")?.addEventListener("submit", (event) => {
+        document.getElementById("gcal-composer-form")?.addEventListener("submit", async (event) => {
             event.preventDefault();
             if (!gcalComposer || gcalComposer.readOnly) return;
-            const title = document.getElementById("gcal-composer-title").value.trim() || "Sem título";
             const date = document.getElementById("gcal-composer-date").value || getISODate(gcalVisibleDate);
             const time = document.getElementById("gcal-composer-time").value || "09:00";
-            const guests = document.getElementById("gcal-composer-guests").value.trim();
-            const location = document.getElementById("gcal-composer-location").value.trim();
-            const description = document.getElementById("gcal-composer-description").value.trim();
-            const id = gcalComposer.id || `custom-${Date.now()}`;
-            const nextEvent = { id, title, date, time, guests, location, description, status: "confirmed", calendar: "Clínica Lumina" };
-            gcalCustomEvents = gcalCustomEvents.filter(item => item.id !== id).concat(nextEvent);
-            gcalSaveCustomEvents();
-            gcalComposer = null;
-            gcalVisibleDate = new Date(`${date}T00:00:00`);
-            renderSlots();
-            showToast("Evento salvo", "O evento foi adicionado à agenda.", "success");
+            const name = document.getElementById("gcal-composer-name").value.trim();
+            const cpf = document.getElementById("gcal-composer-cpf").value.trim();
+            const phone = document.getElementById("gcal-composer-phone").value.trim();
+            const serviceSelect = document.getElementById("gcal-composer-service");
+            const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
+            const rawExamId = serviceSelect.value ? parseInt(serviceSelect.value, 10) : NaN;
+            const examId = Number.isFinite(rawExamId) ? rawExamId : null;
+            const service = selectedOption?.dataset?.service || selectedOption?.textContent?.trim() || serviceSelect.dataset.currentService || "Consulta odontologica";
+
+            if (!name || !cpf || !phone || !service) {
+                showToast("Dados incompletos", "Informe nome, CPF, telefone e procedimento.", "error");
+                return;
+            }
+
+            const [year, month, day] = date.split("-");
+            const payload = {
+                name,
+                cpf,
+                phone,
+                source: "whatsapp",
+                service,
+                appointment_date: `${day}/${month}/${year} ?s ${time}`,
+                slot_date: date,
+                slot_time: time,
+                upsell_success: false,
+                upsell_service: null,
+                status: "pending",
+                exam_id: examId,
+                needs_human: false
+            };
+
+            try {
+                const res = await fetch(`${API_BASE}/api/clients`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                });
+                if (!res.ok) {
+                    const err = await res.json().catch(() => ({}));
+                    throw new Error(err.detail || "Nao foi possivel criar o agendamento.");
+                }
+                const savedClient = await res.json();
+                allClients = [savedClient, ...allClients.filter(client => client.id !== savedClient.id)];
+                gcalComposer = null;
+                gcalVisibleDate = new Date(`${date}T00:00:00`);
+                renderSlots();
+                showToast("Agendamento criado", "O paciente foi adicionado a agenda.", "success");
+            } catch (error) {
+                console.error("Erro ao criar agendamento pela agenda:", error);
+                showToast("Erro ao salvar", error.message || "Erro ao conectar com o servidor.", "error");
+            }
         });
     }
 

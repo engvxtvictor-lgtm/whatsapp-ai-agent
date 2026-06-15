@@ -8,6 +8,7 @@ import asyncio
 import os
 import uuid
 import aiofiles
+from datetime import date
 from backend.system.database import get_db
 from backend.system.dependencies import get_current_admin
 from backend.system.models.web_models import AdminWeb, ClientWeb, ExamWeb, FollowupWeb, FollowupLogWeb, ScheduleSlotWeb
@@ -84,6 +85,30 @@ class CampaignSchema(BaseModel):
     message: str
 
 
+async def resolve_client_slot_data(client_data: ClientSchema):
+    slot_id = None
+    slot_date_obj = None
+
+    if client_data.slot_date:
+        try:
+            slot_date_obj = date.fromisoformat(client_data.slot_date)
+        except ValueError:
+            slot_date_obj = None
+
+    if slot_date_obj and client_data.slot_time:
+        slot = await schedule_service.find_slot_by_date_time(slot_date_obj.isoformat(), client_data.slot_time)
+        if slot:
+            slot_id = slot.id
+    elif client_data.appointment_date:
+        slot, parsed_slot_date, parsed_slot_time = await schedule_service.resolve_slot_from_text(client_data.appointment_date)
+        if parsed_slot_date:
+            slot_date_obj = parsed_slot_date
+        if slot:
+            slot_id = slot.id
+
+    return slot_id, slot_date_obj
+
+
 # Endpoints de Clientes
 @router.get("/clients", response_model=List[ClientSchema])
 async def get_clients(db: AsyncSession = Depends(get_db)):
@@ -132,6 +157,7 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         exam = exam_res.scalars().first()
         if exam:
             service_name = exam.name
+    slot_id, slot_date_obj = await resolve_client_slot_data(client_data)
 
     new_client = ClientWeb(
         name=client_data.name,
@@ -140,6 +166,8 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         source=client_data.source,
         service=service_name,
         appointment_date=client_data.appointment_date,
+        slot_id=slot_id,
+        slot_date=slot_date_obj,
         upsell_success=client_data.upsell_success,
         upsell_service=client_data.upsell_service,
         status=client_data.status or "pending",
@@ -191,12 +219,15 @@ async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSess
         exam = exam_res.scalars().first()
         if exam:
             service_name = exam.name
+    slot_id, slot_date_obj = await resolve_client_slot_data(client_data)
 
     client.name = client_data.name
     client.cpf = client_data.cpf
     client.phone = client_data.phone
     client.service = service_name
     client.appointment_date = client_data.appointment_date
+    client.slot_id = slot_id
+    client.slot_date = slot_date_obj
     client.exam_id = client_data.exam_id
     
     await db.commit()

@@ -1536,6 +1536,26 @@
     border-bottom-color: #1a73e8;
 }
 
+.gcal-composer-heading {
+    margin: 4px 0 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #dadce0;
+}
+
+.gcal-composer-heading strong {
+    display: block;
+    color: #202124;
+    font-size: 22px;
+    font-weight: 700;
+}
+
+.gcal-composer-heading span {
+    display: block;
+    margin-top: 4px;
+    color: #5f6368;
+    font-size: 13px;
+}
+
 .gcal-composer-tabs {
     display: flex;
     gap: 8px;
@@ -1578,9 +1598,10 @@
     min-width: 0;
 }
 
-.gcal-composer-row input {
+.gcal-composer-row input,
+.gcal-composer-row select,
+.gcal-composer-row textarea {
     width: 100%;
-    height: 34px;
     border: 0;
     border-radius: 6px;
     background: transparent;
@@ -1589,7 +1610,21 @@
     font-size: 14px;
 }
 
-.gcal-composer-row input:focus {
+.gcal-composer-row input,
+.gcal-composer-row select {
+    height: 34px;
+}
+
+.gcal-composer-row textarea {
+    min-height: 74px;
+    padding: 8px 10px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.gcal-composer-row input:focus,
+.gcal-composer-row select:focus,
+.gcal-composer-row textarea:focus {
     background: #eef3fb;
 }
 
