@@ -801,7 +801,12 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 # Resolve exam_id
                 exam_id = session.get("confirmed_exam_id") or session.get("exam_id")
                 service_name = session.get("confirmed_service") or session["service"]
-                if not exam_id:
+                if exam_id:
+                    exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(exam_id)))
+                    exam = exam_res.scalars().first()
+                    if exam:
+                        service_name = exam.name
+                else:
                     exams_res = await db.execute(select(ExamWeb))
                     exams = exams_res.scalars().all()
                     for exam in exams:
@@ -922,7 +927,17 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     if session.get("cpf"):
                         existing.cpf = str(session["cpf"])[:14]
                     if _has_real_service(session):
-                        existing.service = session["service"]
+                        session_exam_id = session.get("confirmed_exam_id") or session.get("exam_id")
+                        if session_exam_id:
+                            exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(session_exam_id)))
+                            exam = exam_res.scalars().first()
+                            if exam:
+                                existing.service = exam.name
+                                existing.exam_id = exam.id
+                            else:
+                                existing.service = session["service"]
+                        else:
+                            existing.service = session["service"]
                     await db.commit()
                 else:
                     # Se tivermos pelo menos o nome, já criamos um rascunho do paciente no painel

@@ -154,7 +154,7 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
             cpf=client.cpf,
             phone=client.phone,
             source=client.source,
-            service=client.service,
+            service=client.exam.name if client.exam else client.service,
             appointment_date=client.appointment_date,
             slot_date=client.slot_date.isoformat() if client.slot_date else None,
             slot_time=client.slot.time_str if client.slot else None,
@@ -213,7 +213,7 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         cpf=new_client.cpf,
         phone=new_client.phone,
         source=new_client.source,
-        service=new_client.service,
+        service=new_client.exam.name if new_client.exam else new_client.service,
         appointment_date=new_client.appointment_date,
         slot_date=new_client.slot_date.isoformat() if new_client.slot_date else None,
         slot_time=new_client.slot.time_str if new_client.slot else None,
@@ -268,7 +268,7 @@ async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSess
         cpf=client.cpf,
         phone=client.phone,
         source=client.source,
-        service=client.service,
+        service=client.exam.name if client.exam else client.service,
         appointment_date=client.appointment_date,
         slot_date=client.slot_date.isoformat() if client.slot_date else None,
         slot_time=client.slot.time_str if client.slot else None,
@@ -286,7 +286,7 @@ async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSess
 @router.put("/clients/{client_id}/confirm")
 async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id)
+        select(ClientWeb).options(selectinload(ClientWeb.slot), selectinload(ClientWeb.exam)).where(ClientWeb.id == client_id)
     )
     client = result.scalars().first()
     if not client:
@@ -314,10 +314,13 @@ async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: Asy
             detail="Informe uma data e horario validos antes de confirmar este agendamento."
         )
 
+    if client.exam:
+        client.service = client.exam.name
+
     client.status = "confirmed"
     await db.commit()
     result = await db.execute(
-        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id)
+        select(ClientWeb).options(selectinload(ClientWeb.slot), selectinload(ClientWeb.exam)).where(ClientWeb.id == client_id)
     )
     client = result.scalars().first()
     
