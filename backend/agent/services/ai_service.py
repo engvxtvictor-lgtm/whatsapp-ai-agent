@@ -229,6 +229,21 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
     - "Carlos Portela" (nome sozinho, primeira mensagem)
     """
     # 1. Padrão com prefixo explícito
+    intent_words = {
+        "gostaria", "queria", "quero", "preciso", "agendar", "marcar", "consulta",
+        "procedimento", "servico", "serviço", "valor", "preco", "preço", "horario",
+        "horário", "limpeza", "clareamento", "implante", "canal", "restauracao",
+        "restauração", "extracao", "extração", "avaliacao", "avaliação"
+    }
+
+    def is_valid_name_candidate(value: str) -> bool:
+        words = [w.lower() for w in re.findall(r"[a-zA-Z\u00C0-\u00FF]+", value)]
+        if len(words) < 2 or len(words) > 5:
+            return False
+        if any(word in intent_words for word in words):
+            return False
+        return len(value.strip()) >= 5 and not value.replace(" ", "").isdigit()
+
     prefix_pattern = re.compile(
         r"(?i)(?:\bmeu nome [eé]|\bme chamo|\baqui [eé] o|\bsou o|\bsou a|\bnome:?)\s+([a-zA-Z\s\u00C0-\u00FF]{3,50})"
     )
@@ -236,7 +251,7 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
         m = prefix_pattern.search(msg)
         if m:
             name = m.group(1).strip().split(",")[0].strip().title()
-            if len(name) >= 3 and not name.replace(" ", "").isdigit():
+            if is_valid_name_candidate(name):
                 return name
 
     # 2. Nome enviado junto com CPF (ex: "carlos portela , 05682727304")
@@ -251,14 +266,14 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
                 r"(?i)\b(meu nome [eé]|me chamo|aqui [eé] o|sou o|sou a|nome|cpf|olá|ola|ei|oi)\b",
                 "", clean
             ).strip()
-            if len(clean) >= 3 and not clean.replace(" ", "").isdigit():
+            if is_valid_name_candidate(clean):
                 return clean.title()
 
     # 3. Mensagem contendo apenas palavras (possível nome direto)
     for msg in user_msgs[:2]:  # olha só as primeiras mensagens
         stripped = msg.strip()
         # Se parece nome (só letras e espaços, entre 5 e 40 chars, sem números)
-        if re.match(r"^[a-zA-Z\u00C0-\u00FF\s]{5,40}$", stripped):
+        if re.match(r"^[a-zA-Z\u00C0-\u00FF\s]{5,40}$", stripped) and is_valid_name_candidate(stripped):
             return stripped.title()
 
     return None
@@ -289,6 +304,7 @@ def _build_simulated_response(message: str, history: list) -> str:
     # Detecção de Serviço
     service = None
     services_list = ["limpeza", "clareamento", "aparelho", "implante", "canal", "restauração", "extração", "bruxismo", "faceta", "prótese"]
+    services_list.extend(["consulta", "avaliação", "avaliacao", "restauracao", "extracao", "protese"])
     for msg in reversed(user_msgs):
         msg_l = msg.lower()
         for s in services_list:
@@ -357,6 +373,8 @@ def _build_simulated_response(message: str, history: list) -> str:
         response = f"Perfeito, {name}! Já registrei seu interesse em *{service}*. Qual o dia e horário de sua preferência para a consulta?"
     elif name and cpf:
         response = f"Ótimo, {name}! Agora me diz: qual procedimento você tem interesse? Temos Limpeza, Clareamento, Implante e muito mais!"
+    elif service:
+        response = "Perfeito! Para eu agilizar seu cadastro, me informe seu Nome Completo e CPF em uma única mensagem. 😊"
     elif name:
         response = f"Prazer, {name}! 😊 Para eu fazer seu cadastro na recepção, poderia me informar o seu CPF?"
     elif cpf:
