@@ -967,6 +967,7 @@
 
     function gcalServiceOptions(selectedExamId = "", selectedService = "") {
         const selectedId = selectedExamId ? String(selectedExamId) : "";
+        const hasSelectedInList = (allExams || []).some(exam => selectedId === String(exam.id) || (!selectedId && selectedService === exam.name));
         const options = (allExams || []).map(exam => {
             const value = String(exam.id);
             const selected = selectedId === value || (!selectedId && selectedService === exam.name) ? "selected" : "";
@@ -974,11 +975,12 @@
         }).join("");
 
         if (options) {
-            return `<option value="">Selecione o procedimento...</option>${options}`;
+            const otherSelected = selectedService && !hasSelectedInList ? "selected" : "";
+            return `<option value="">Selecione o procedimento...</option>${options}<option value="__other__" data-service="" ${otherSelected}>Outro procedimento</option>`;
         }
 
         const fallback = selectedService || "Consulta odontologica";
-        return `<option value="${gcalEscape(fallback)}" data-service="${gcalEscape(fallback)}" selected>${gcalEscape(fallback)}</option>`;
+        return `<option value="">Selecione o procedimento...</option><option value="__other__" data-service="" selected>Outro procedimento</option>`;
     }
 
     function gcalComposerHtml() {
@@ -991,6 +993,7 @@
         const notes = gcalEscape(gcalComposer.notes);
         const service = gcalEscape(gcalComposer.service);
         const isReadOnly = gcalComposer.readOnly;
+        const showCustomService = gcalComposer.service && !(allExams || []).some(exam => exam.name === gcalComposer.service || String(exam.id) === String(gcalComposer.examId));
         return `
             <div class="gcal-composer-backdrop">
                 <form class="gcal-composer" id="gcal-composer-form">
@@ -1023,6 +1026,10 @@
                         <select id="gcal-composer-service" ${isReadOnly ? "disabled" : ""} required data-current-service="${service}">
                             ${gcalServiceOptions(gcalComposer.examId, gcalComposer.service)}
                         </select>
+                    </label>
+                    <label class="gcal-composer-row gcal-custom-service-row ${showCustomService ? "" : "is-hidden"}">
+                        <i class="fa-solid fa-pen-to-square"></i>
+                        <input id="gcal-composer-custom-service" placeholder="Digite o procedimento desejado" value="${showCustomService ? service : ""}" ${isReadOnly ? "readonly" : ""}>
                     </label>
                     <label class="gcal-composer-row">
                         <i class="fa-solid fa-align-left"></i>
@@ -1149,6 +1156,14 @@
             gcalComposer = null;
             renderSlots();
         });
+        const serviceSelect = document.getElementById("gcal-composer-service");
+        const customServiceRow = scheduleGridContainer.querySelector(".gcal-custom-service-row");
+        serviceSelect?.addEventListener("change", () => {
+            customServiceRow?.classList.toggle("is-hidden", serviceSelect.value !== "__other__");
+            if (serviceSelect.value === "__other__") {
+                document.getElementById("gcal-composer-custom-service")?.focus();
+            }
+        });
         document.getElementById("gcal-composer-delete")?.addEventListener("click", () => {
             if (!gcalComposer?.id) return;
             gcalCustomEvents = gcalCustomEvents.filter(item => item.id !== gcalComposer.id);
@@ -1167,9 +1182,12 @@
             const phone = document.getElementById("gcal-composer-phone").value.trim();
             const serviceSelect = document.getElementById("gcal-composer-service");
             const selectedOption = serviceSelect.options[serviceSelect.selectedIndex];
-            const rawExamId = serviceSelect.value ? parseInt(serviceSelect.value, 10) : NaN;
+            const rawExamId = serviceSelect.value && serviceSelect.value !== "__other__" ? parseInt(serviceSelect.value, 10) : NaN;
             const examId = Number.isFinite(rawExamId) ? rawExamId : null;
-            const service = selectedOption?.dataset?.service || selectedOption?.textContent?.trim() || serviceSelect.dataset.currentService || "Consulta odontologica";
+            const customService = document.getElementById("gcal-composer-custom-service")?.value.trim() || "";
+            const service = serviceSelect.value === "__other__"
+                ? customService
+                : (selectedOption?.dataset?.service || selectedOption?.textContent?.trim() || serviceSelect.dataset.currentService || "");
 
             if (!name || !cpf || !phone || !service) {
                 showToast("Dados incompletos", "Informe nome, CPF, telefone e procedimento.", "error");
@@ -1183,7 +1201,7 @@
                 phone,
                 source: "whatsapp",
                 service,
-                appointment_date: `${day}/${month}/${year} ?s ${time}`,
+                appointment_date: `${day}/${month}/${year} às ${time}`,
                 slot_date: date,
                 slot_time: time,
                 upsell_success: false,

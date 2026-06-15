@@ -676,9 +676,47 @@ class ExamSchema(BaseModel):
         from_attributes = True
 
 
+OFFICIAL_EXAMS = [
+    ("Extração Complexa (Siso)", 300.00, "Cirurgia"),
+    ("Extração Simples", 120.00, "Cirurgia"),
+    ("Placa para Bruxismo", 450.00, "Clínico Geral"),
+    ("Restauração", 80.00, "Clínico Geral"),
+    ("Radiografia Periapical", 35.00, "Diagnóstico"),
+    ("Tratamento de Canal", 600.00, "Endodontia"),
+    ("Clareamento (por sessão)", 250.00, "Estética"),
+    ("Facetas (por dente)", 250.00, "Estética"),
+    ("Remoção de Facetas", 300.00, "Estética"),
+    ("Implante", 2800.00, "Implantodontia"),
+    ("Consulta + Aplicação de Flúor Infantil", 50.00, "Odontopediatria"),
+    ("Extração Infantil", 90.00, "Odontopediatria"),
+    ("Restauração Infantil", 70.00, "Odontopediatria"),
+    ("Contenção Ortodôntica Inferior", 200.00, "Ortodontia"),
+    ("Contenção Ortodôntica Superior", 250.00, "Ortodontia"),
+    ("Manutenção Aparelho", 90.00, "Ortodontia"),
+    ("Gengivoplastia (por dente)", 200.00, "Periodontia"),
+    ("Raspagem (Limpeza)", 120.00, "Prevenção"),
+    ("Pino + Coroa", 500.00, "Prótese"),
+    ("Prótese Dentária", 950.00, "Prótese"),
+]
+
+
+async def ensure_official_exams(db: AsyncSession):
+    result = await db.execute(select(ExamWeb))
+    existing_by_name = {exam.name.strip().lower(): exam for exam in result.scalars().all()}
+    missing = [
+        ExamWeb(name=name, price=price, category=category)
+        for name, price, category in OFFICIAL_EXAMS
+        if name.strip().lower() not in existing_by_name
+    ]
+    if missing:
+        db.add_all(missing)
+        await db.commit()
+
+
 # Endpoints de Exames/Procedimentos
 @router.get("/exams", response_model=List[ExamSchema])
 async def get_exams(db: AsyncSession = Depends(get_db)):
+    await ensure_official_exams(db)
     result = await db.execute(select(ExamWeb).order_by(ExamWeb.name.asc()))
     exams = result.scalars().all()
     return exams

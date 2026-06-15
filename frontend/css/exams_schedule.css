@@ -1622,6 +1622,10 @@
     font-family: inherit;
 }
 
+.gcal-custom-service-row.is-hidden {
+    display: none;
+}
+
 .gcal-composer-row input:focus,
 .gcal-composer-row select:focus,
 .gcal-composer-row textarea:focus {
