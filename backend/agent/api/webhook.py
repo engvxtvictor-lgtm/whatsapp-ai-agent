@@ -247,6 +247,65 @@ async def _available_slots_message(days_ahead: int = 14) -> str:
     return "\n".join(lines)
 
 
+def _appointment_confirmation_message(session: dict) -> str:
+    service = session.get("service") or "procedimento escolhido"
+    slot_date = date.fromisoformat(str(session["slot_date"]))
+    slot_time = session["slot_time"]
+    return (
+        "Perfeito! Antes de enviar para a recepção, confirme por favor:\n\n"
+        f"🦷 Procedimento: {service}\n"
+        f"📅 Data/Hora: {slot_date.strftime('%d/%m/%Y')} às {slot_time}\n\n"
+        "Posso enviar essa solicitação de agendamento para a equipe confirmar?"
+    )
+
+
+async def _handle_requested_slot(phone: str, text: str, session: dict, reply_jid: str) -> bool:
+    if not (session.get("name") and session.get("cpf") and _has_real_service(session)):
+        return False
+
+    requested_date, requested_time = schedule_service.parse_appointment_text(text)
+    if requested_time and not requested_date:
+        base_date = session.get("pending_slot_date") or session.get("slot_date")
+        if not base_date and session.get("appointment_date"):
+            parsed_existing_date, _ = schedule_service.parse_appointment_text(session.get("appointment_date"))
+            if parsed_existing_date:
+                base_date = parsed_existing_date.isoformat()
+        if base_date:
+            requested_date = date.fromisoformat(str(base_date))
+
+    if not (requested_date and requested_time):
+        return False
+
+    slot = await schedule_service.find_slot_by_date_time(requested_date.isoformat(), requested_time)
+    if not slot:
+        session["appointment_date"] = None
+        session["slot_date"] = None
+        session["slot_time"] = None
+        session["pending_slot_date"] = requested_date.isoformat()
+        session["awaiting_slot_confirmation"] = False
+        message = (
+            f"Esse horário ({requested_date.strftime('%d/%m/%Y')} às {requested_time}) não está disponível na agenda.\n\n"
+            f"{await _available_slots_message()}"
+        )
+        await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+        session = await sess.add_to_history(session, "user", text)
+        session = await sess.add_to_history(session, "assistant", message)
+        await sess.save_session(phone, session)
+        return True
+
+    session["appointment_date"] = f"{requested_date.strftime('%d/%m/%Y')} às {requested_time}"
+    session["slot_date"] = requested_date.isoformat()
+    session["slot_time"] = requested_time
+    session["pending_slot_date"] = requested_date.isoformat()
+    session["awaiting_slot_confirmation"] = True
+    message = _appointment_confirmation_message(session)
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "user", text)
+    session = await sess.add_to_history(session, "assistant", message)
+    await sess.save_session(phone, session)
+    return True
+
+
 async def _slot_has_capacity(db: AsyncSession, slot_id: int, slot_date: date, current_client_id: int | None = None) -> bool:
     slot_res = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
     slot = slot_res.scalars().first()
@@ -484,6 +543,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         logger.info(f"Origem do cliente detectada como INSTAGRAM via mensagem inicial!")
         session["source"] = "instagram"
 
+    skip_ai_response = False
     if session.get("awaiting_slot_confirmation"):
         if _is_rejection_text(text):
             session["appointment_date"] = None
@@ -498,6 +558,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             return
         if _is_confirmation_text(text):
             session["awaiting_slot_confirmation"] = False
+            skip_ai_response = True
 
     if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
         return
@@ -536,6 +597,9 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         await sess.save_session(phone, session)
         return
 
+    if await _handle_requested_slot(phone, text, session, phone_for_reply):
+        return
+
     if is_first_message and not user_requested_human:
         await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
         session = await sess.add_to_history(session, "user", censored_text)
@@ -562,7 +626,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     response = ""
 
     # Se NÃO disparou o gatilho de humano ainda, consulta a IA
-    if not needs_human_trigger:
+    if not needs_human_trigger and not skip_ai_response:
         # 2. consulta IA usando o texto censurado
         context = faq_service.get_context(censored_text)
         try:
@@ -695,7 +759,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         # Salva a sessão no Redis antes de retornar, para garantir que 'escalated=True' persista
         await sess.save_session(phone, session)
         return
-    else:
+    elif not skip_ai_response:
         # Enviar resposta da IA
         sent_response = response
         if session.get("awaiting_slot_confirmation"):
