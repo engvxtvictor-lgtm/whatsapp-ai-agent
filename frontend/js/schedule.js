@@ -787,16 +787,9 @@
             <aside class="gcal-sidebar">
                 <button type="button" class="gcal-create-btn" id="gcal-create-slot"><i class="fa-solid fa-plus"></i> Criar <i class="fa-solid fa-caret-down"></i></button>
                 ${gcalMiniCalendar()}
-                <button type="button" class="gcal-people-btn"><i class="fa-solid fa-user-group"></i> Pesquisar pessoas</button>
                 <div class="gcal-sidebar-section">
-                    <div class="gcal-section-title"><span>Páginas de agendamento de horário</span><button type="button"><i class="fa-solid fa-plus"></i></button></div>
-                </div>
-                <div class="gcal-sidebar-section">
-                    <div class="gcal-section-title"><span>Minhas agendas</span><i class="fa-solid fa-chevron-up"></i></div>
-                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#039be5"></span> Clínica Lumina</label>
-                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#7986cb"></span> Aniversários</label>
-                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#3f51b5"></span> Familia</label>
-                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#4285f4"></span> Tarefas</label>
+                    <div class="gcal-section-title"><span>Agenda da clínica</span><i class="fa-solid fa-chevron-up"></i></div>
+                    <label class="gcal-calendar-filter"><input type="checkbox" checked><span style="--calendar-color:#039be5"></span> Clínica Lúmina</label>
                 </div>
                 <div class="gcal-sidebar-section">
                     <div class="gcal-section-title"><span>Filtros da agenda</span><i class="fa-solid fa-chevron-up"></i></div>
@@ -1255,9 +1248,6 @@
                             <button type="button" class="gcal-view-btn" id="gcal-view-button">${gcalViewLabel()} <i class="fa-solid fa-caret-down"></i></button>
                             ${gcalViewMenu()}
                         </div>
-                        <button type="button" class="gcal-task-toggle active" title="Agenda"><i class="fa-regular fa-calendar-days"></i></button>
-                        <button type="button" class="gcal-task-toggle" title="Tarefas"><i class="fa-regular fa-circle-check"></i></button>
-                        <button type="button" class="gcal-icon-btn" title="Apps"><i class="fa-solid fa-grip"></i></button>
                     </div>
                     ${gcalRenderView(query)}
                     ${gcalComposerHtml()}
