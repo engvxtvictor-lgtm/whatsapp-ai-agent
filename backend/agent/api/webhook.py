@@ -142,6 +142,7 @@ async def _ask_for_service_before_scheduling(phone: str, reply_jid: str, session
     session["slot_date"] = None
     session["slot_time"] = None
     session["awaiting_service"] = True
+    session["appointment_request_sent"] = False
     if not session.get("services_pdf_sent"):
         session = await _send_services_pdf(phone, reply_jid, session)
     message = (
@@ -298,6 +299,7 @@ async def _handle_requested_slot(phone: str, text: str, session: dict, reply_jid
     session["slot_time"] = requested_time
     session["pending_slot_date"] = requested_date.isoformat()
     session["awaiting_slot_confirmation"] = True
+    session["appointment_request_sent"] = False
     session["confirmed_service"] = session["service"]
     if session.get("exam_id"):
         session["confirmed_exam_id"] = session["exam_id"]
@@ -552,6 +554,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
             session["appointment_date"] = None
             session["slot_date"] = None
             session["slot_time"] = None
+            session["appointment_request_sent"] = False
             session["awaiting_slot_confirmation"] = False
             message = "Sem problemas. Me diga outro dia e horário que você prefere para eu verificar na agenda. 😊"
             await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
@@ -786,8 +789,9 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     has_name = bool(session.get("name"))
     has_service = _has_real_service(session)
     has_date = bool(session.get("appointment_date")) and not session.get("awaiting_slot_confirmation")
+    request_already_sent = bool(session.get("appointment_request_sent"))
     logger.info(f"[REGISTRO] name={session.get('name')!r} service={session.get('service')!r} date={session.get('appointment_date')!r} cpf={'****' if session.get('cpf') else None}")
-    if has_name and has_service and has_date:
+    if has_name and has_service and has_date and not request_already_sent:
         async with AsyncSession() as db:
             try:
                 stmt = (
@@ -902,6 +906,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 
                 await whatsapp.send_message(phone, confirm_msg, reply_jid=session.get("phone_for_reply"))
                 session = await sess.add_to_history(session, "assistant", confirm_msg)
+                session["appointment_request_sent"] = True
 
                 # O dashboard já sinaliza pacientes que precisam de atendimento humano (is_busy_day).
                 # Não é necessário enviar notificação via WhatsApp para o próprio número da clínica.
