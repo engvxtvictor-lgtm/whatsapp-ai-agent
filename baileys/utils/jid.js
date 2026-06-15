@@ -37,9 +37,11 @@ async function getSenderNumber(msg, sock) {
     }
   }
 
-  // Clean the phone number to be purely numeric (or a LID string if unresolved)
-  // This removes suffixes like @s.whatsapp.net, @lid, @c.us, @g.us
-  const phone = normalizedPhone ? normalizedPhone.replace(/@.*$/, "") : "";
+  // Clean the phone number to be purely numeric (or a LID string if unresolved).
+  // This removes suffixes and device ids like :2.
+  const phone = normalizedPhone
+    ? normalizedPhone.replace(/@.*$/, "").replace(/:.*/, "").replace(/\D/g, "")
+    : "";
 
   return {
     rawJid: rawJid,

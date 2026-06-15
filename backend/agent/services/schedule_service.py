@@ -4,6 +4,7 @@ Consulta os slots cadastrados, filtra vagas disponíveis e
 formata o contexto para injeção no prompt da IA.
 """
 import re
+import unicodedata
 from datetime import date, datetime, timedelta
 from sqlalchemy import select, func
 from backend.system.database import AsyncSession
@@ -162,10 +163,13 @@ def normalize_time(time_text: str | None) -> str | None:
     """Normaliza horarios como 'as 10', '10h' e '10:00' para HH:MM."""
     if not time_text:
         return None
-    text = re.sub(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", time_text.lower().strip())
+    text = _strip_accents(time_text.lower().strip())
+    text = re.sub(r"\b\d{1,2}/\d{1,2}(?:/\d{2,4})?\b", " ", text)
     match = re.search(r"\b(\d{1,2})[:h](\d{2})?\b", text)
     if not match:
         match = re.search(r"\b(?:as|às|a)\s+(\d{1,2})(?:\s*h)?\b", text)
+    if not match:
+        match = re.search(r"\b(\d{1,2})\s*(?:hora|horas)\b", text)
     if not match:
         return None
     hour = int(match.group(1))
@@ -186,6 +190,8 @@ def next_date_for_weekday(weekday: int, from_date: date | None = None) -> date:
 
 
 def _strip_accents(text: str) -> str:
+    text = unicodedata.normalize("NFD", text)
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
     replacements = {
         "á": "a", "à": "a", "ã": "a", "â": "a",
         "é": "e", "ê": "e",

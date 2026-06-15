@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Request, BackgroundTasks
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import selectinload
 from backend.agent.services import session as sess
 from backend.agent.services import ai_service, faq_service, whatsapp
@@ -53,6 +53,20 @@ def _wants_services_pdf(text: str) -> bool:
 
 def _wants_location(text: str) -> bool:
     return _contains_any(text.lower(), LOCATION_KEYWORDS)
+
+
+def _valid_cpf(value: str | None) -> bool:
+    if not value:
+        return False
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    return len(digits) >= 11 and digits != "00000000000"
+
+
+def _client_lookup_filter(phone: str, cpf: str | None = None):
+    filters = [ClientWeb.phone == phone]
+    if _valid_cpf(cpf):
+        filters.append(ClientWeb.cpf == str(cpf)[:14])
+    return or_(*filters)
 
 
 async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
@@ -291,7 +305,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
 
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 client_record = result.scalars().first()
                 if client_record and client_record.status == "pending" and (not client_record.service or client_record.service == "Atendimento Humano"):
@@ -439,6 +457,18 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 else:
                     session[key] = metadata[key]
 
+    direct_date, direct_time = schedule_service.parse_appointment_text(text)
+    if direct_date and direct_time and not session.get("appointment_date"):
+        session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+
+    if session.get("appointment_date") and (not session.get("slot_date") or not session.get("slot_time")):
+        if not direct_date or not direct_time:
+            direct_date, direct_time = schedule_service.parse_appointment_text(session.get("appointment_date"))
+        if direct_date and direct_time:
+            session["slot_date"] = direct_date.isoformat()
+            session["slot_time"] = direct_time
+            session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+
     # Adicionar mensagem do usuário à história da sessão
     session = await sess.add_to_history(session, "user", censored_text)
 
@@ -450,7 +480,11 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         # Salva ou atualiza ClientWeb no banco de dados com needs_human=True
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 client_record = result.scalars().first()
                 
@@ -567,6 +601,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     logger.info(f"Atualizando agendamento para {phone}...")
                     existing.name = session["name"]
                     existing.cpf = str(session.get("cpf") or existing.cpf or "000.000.000-00")[:14]
+                    existing.phone = phone
                     existing.service = service_name
                     existing.appointment_date = session["appointment_date"]
                     existing.slot_id = slot_id
@@ -614,6 +649,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                 result = await db.execute(stmt)
                 existing = result.scalars().first()
                 if existing:
+                    existing.phone = phone
                     if session.get("name"):
                         existing.name = session["name"]
                     if session.get("cpf"):
