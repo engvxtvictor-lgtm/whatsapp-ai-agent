@@ -1482,16 +1482,20 @@
     display: flex;
     align-items: center;
     justify-content: center;
+    padding: 24px;
     pointer-events: none;
 }
 
 .gcal-composer {
-    width: min(520px, calc(100% - 56px));
-    padding: 0 16px 14px;
+    width: min(620px, calc(100% - 32px));
+    max-height: min(760px, calc(100vh - 96px));
+    padding: 0 18px 16px;
     border-radius: 14px;
     background: #f8fbff;
     color: #3c4043;
     box-shadow: 0 12px 30px rgba(60, 64, 67, 0.34);
+    overflow-y: auto;
+    scrollbar-width: thin;
     pointer-events: auto;
 }
 
@@ -1579,7 +1583,7 @@
 }
 
 .gcal-composer-row {
-    min-height: 42px;
+    min-height: 52px;
     display: grid;
     grid-template-columns: 28px minmax(0, 1fr);
     align-items: center;
@@ -1612,7 +1616,8 @@
 
 .gcal-composer-row input,
 .gcal-composer-row select {
-    height: 34px;
+    height: 42px;
+    padding: 0 10px;
 }
 
 .gcal-composer-row textarea {
@@ -1664,11 +1669,16 @@
 }
 
 .gcal-composer-actions {
-    margin-top: 12px;
+    position: sticky;
+    bottom: -16px;
+    margin: 14px -18px -16px;
+    padding: 12px 18px 16px;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: 10px;
+    background: linear-gradient(180deg, rgba(248,251,255,0.84), #f8fbff 35%);
+    border-radius: 0 0 14px 14px;
 }
 
 .gcal-delete-btn,
