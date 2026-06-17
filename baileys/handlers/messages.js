@@ -6,6 +6,14 @@ const msgBuffer = {}; // { phone: { timer, texts[], pushName, rawJid, resolvedJi
 const composingTimers = {}; // { jid: timerId }
 const DEBOUNCE_MS = 3000;
 
+function shouldIgnoreJid(remoteJid) {
+  if (!remoteJid) return true;
+  if (remoteJid.endsWith("@g.us")) return "grupo";
+  if (remoteJid.endsWith("@newsletter")) return "canal/newsletter";
+  if (remoteJid === "status@broadcast" || remoteJid.endsWith("@broadcast")) return "broadcast/status";
+  return "";
+}
+
 function setupMessageHandlers(sock) {
   async function flushBuffer(phone) {
     const buf = msgBuffer[phone];
@@ -62,8 +70,9 @@ function setupMessageHandlers(sock) {
     if (!msg.message || msg.key.fromMe) return;
 
     const remoteJid = msg.key.remoteJid || "";
-    if (remoteJid.endsWith("@g.us")) {
-      console.log(`[grupo] Ignorando mensagem de grupo: ${remoteJid}`);
+    const ignoredReason = shouldIgnoreJid(remoteJid);
+    if (ignoredReason) {
+      console.log(`[${ignoredReason}] Ignorando mensagem fora do atendimento 1:1: ${remoteJid}`);
       return;
     }
     
