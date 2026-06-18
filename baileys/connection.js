@@ -10,8 +10,12 @@ let isConnecting = false;
 let sock = null;
 let store = { contacts: {} };
 let activeConnectionCallback = null;
+let reconnectTimer = null;
+let qrWatchdogTimer = null;
+let connectionGeneration = 0;
 const statusListeners = new Set();
 const AUTH_DIR = "./auth";
+const QR_WATCHDOG_MS = 70000;
 
 const sessionState = {
   clinicId: process.env.CLINIC_ID || "default",
@@ -62,6 +66,62 @@ function clearAuthDirectory() {
   }
 }
 
+function clearConnectionTimers() {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  if (qrWatchdogTimer) clearTimeout(qrWatchdogTimer);
+  reconnectTimer = null;
+  qrWatchdogTimer = null;
+}
+
+function detachSocketListeners(socket) {
+  if (!socket?.ev) return;
+  socket.ev.removeAllListeners("connection.update");
+  socket.ev.removeAllListeners("creds.update");
+  socket.ev.removeAllListeners("messages.upsert");
+}
+
+async function closeCurrentSocket({ remoteLogout = false } = {}) {
+  clearConnectionTimers();
+  connectionGeneration += 1;
+  isConnecting = false;
+
+  const current = sock;
+  sock = null;
+  if (!current) return;
+
+  detachSocketListeners(current);
+  try {
+    if (remoteLogout) await current.logout();
+    else current.end?.();
+  } catch (_) {
+    try {
+      current.end?.();
+    } catch (_) {}
+  }
+}
+
+function scheduleReconnect(delayMs, generation) {
+  clearConnectionTimers();
+  reconnectTimer = setTimeout(() => {
+    if (generation !== connectionGeneration) return;
+    conectar(activeConnectionCallback).catch((error) => {
+      console.error("Erro ao reconectar WhatsApp:", error.message);
+    });
+  }, delayMs);
+}
+
+function startQrWatchdog(generation) {
+  if (qrWatchdogTimer) clearTimeout(qrWatchdogTimer);
+  qrWatchdogTimer = setTimeout(async () => {
+    if (generation !== connectionGeneration || sessionState.status !== "waiting_qr") return;
+    console.log("QR Code expirou. Gerando um novo automaticamente.");
+    await closeCurrentSocket();
+    conectar(activeConnectionCallback).catch((error) => {
+      console.error("Erro ao renovar QR Code:", error.message);
+    });
+  }, QR_WATCHDOG_MS);
+}
+
 function getUptimeSeconds() {
   if (!sessionState.connectedAt) return 0;
   return Math.max(0, Math.floor((Date.now() - new Date(sessionState.connectedAt).getTime()) / 1000));
@@ -86,21 +146,7 @@ function markActivity() {
 }
 
 async function destroyCurrentSocket(reason = "manual") {
-  if (!sock) return;
-  const current = sock;
-  sock = null;
-  try {
-    current.ev.removeAllListeners("connection.update");
-    current.ev.removeAllListeners("creds.update");
-    current.ev.removeAllListeners("messages.upsert");
-  } catch (_) {}
-  try {
-    await current.logout();
-  } catch (_) {
-    try {
-      current.end?.();
-    } catch (_) {}
-  }
+  await closeCurrentSocket({ remoteLogout: true });
   updateState({
     status: "disconnected",
     qr: null,
@@ -116,25 +162,41 @@ async function conectar(onConnectionEstablished) {
   if (sock && sessionState.status === "connected") return sock;
 
   isConnecting = true;
+  clearConnectionTimers();
+  const generation = ++connectionGeneration;
   updateState({
     status: "reconnecting",
     lastReconnectAt: nowISO(),
     lastError: null,
   });
 
-  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+  let state;
+  let saveCreds;
+  let newSocket;
+  try {
+    ({ state, saveCreds } = await useMultiFileAuthState(AUTH_DIR));
+    newSocket = makeWASocket({
+      auth: state,
+      printQRInTerminal: false,
+      keepAliveIntervalMs: 10000,
+      browser: ["Ubuntu", "Chrome", "20.0.04"],
+      logger: pino({ level: "error" }),
+    });
+  } catch (error) {
+    isConnecting = false;
+    updateState({
+      status: "disconnected",
+      lastError: error.message,
+      disconnectReason: "connection_start_failed",
+    });
+    throw error;
+  }
+  sock = newSocket;
 
-  sock = makeWASocket({
-    auth: state,
-    printQRInTerminal: false,
-    keepAliveIntervalMs: 10000,
-    browser: ["Ubuntu", "Chrome", "20.0.04"],
-    logger: pino({ level: "error" }),
-  });
+  if (typeof store.bind === "function") store.bind(newSocket.ev);
 
-  if (typeof store.bind === "function") store.bind(sock.ev);
-
-  sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
+  newSocket.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
+    if (generation !== connectionGeneration || sock !== newSocket) return;
     if (qr) {
       console.log("QR Code gerado para conexao pelo painel.");
       updateState({
@@ -143,10 +205,12 @@ async function conectar(onConnectionEstablished) {
         qrUpdatedAt: nowISO(),
         disconnectReason: null,
       });
+      startQrWatchdog(generation);
     }
 
     if (connection === "open") {
-      const userPhone = sock.user?.id ? sock.user.id.split(":")[0].split("@")[0] : null;
+      clearConnectionTimers();
+      const userPhone = newSocket.user?.id ? newSocket.user.id.split(":")[0].split("@")[0] : null;
       console.log("WhatsApp conectado! O numero do robo e: +" + (userPhone || "desconhecido"));
       isConnecting = false;
       updateState({
@@ -159,7 +223,7 @@ async function conectar(onConnectionEstablished) {
       });
 
       if (activeConnectionCallback) {
-        activeConnectionCallback(sock);
+        activeConnectionCallback(newSocket);
       }
     }
 
@@ -167,7 +231,7 @@ async function conectar(onConnectionEstablished) {
       isConnecting = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const reason = statusCode ? String(statusCode) : lastDisconnect?.error?.message || "connection_closed";
-      sock = null;
+      if (sock === newSocket) sock = null;
 
       if (statusCode === DisconnectReason.loggedOut) {
         console.log("WhatsApp deslogado. Limpando credenciais e aguardando novo QR.");
@@ -184,7 +248,7 @@ async function conectar(onConnectionEstablished) {
           disconnectReason: reason,
           lastError: reason,
         });
-        setTimeout(() => conectar(activeConnectionCallback), 2000);
+        scheduleReconnect(2000, generation);
       } else {
         console.log("Conexao caiu, tentando reconectar...");
         updateState({
@@ -194,40 +258,37 @@ async function conectar(onConnectionEstablished) {
           disconnectReason: reason,
           lastError: reason,
         });
-        setTimeout(() => conectar(activeConnectionCallback), 5000);
+        scheduleReconnect(5000, generation);
       }
     }
   });
 
-  sock.ev.on("creds.update", saveCreds);
+  newSocket.ev.on("creds.update", saveCreds);
 
-  return sock;
+  return newSocket;
 }
 
 async function reconnect() {
   updateState({ status: "reconnecting", lastReconnectAt: nowISO() });
-  if (sock) {
-    try {
-      sock.end?.();
-    } catch (_) {}
-    sock = null;
-  }
+  await closeCurrentSocket();
   return conectar(activeConnectionCallback);
 }
 
 async function disconnect() {
-  if (sock) {
-    try {
-      sock.end?.();
-    } catch (_) {}
-    sock = null;
-  }
+  // No painel, desconectar significa trocar de numero: encerra a conta atual,
+  // limpa a sessao e inicia imediatamente um novo pareamento.
+  await closeCurrentSocket({ remoteLogout: true });
+  clearAuthDirectory();
   updateState({
-    status: "disconnected",
+    status: "reconnecting",
     qr: null,
     connectedAt: null,
-    disconnectReason: "manual_disconnect",
+    connectedNumber: null,
+    qrUpdatedAt: null,
+    lastError: null,
+    disconnectReason: "switching_account",
   });
+  return conectar(activeConnectionCallback);
 }
 
 async function logout() {

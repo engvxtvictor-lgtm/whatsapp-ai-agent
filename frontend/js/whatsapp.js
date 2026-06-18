@@ -1,7 +1,8 @@
 let whatsappEventSource = null;
 let whatsappLastStatus = null;
 let whatsappRendering = false;
-let whatsappControlsBound = false;
+let whatsappPollTimer = null;
+let whatsappActionRunning = false;
 
 function whatsappAuthHeaders() {
     const token = localStorage.getItem("access_token");
@@ -130,27 +131,58 @@ async function refreshWhatsappStatus() {
 }
 
 async function runWhatsappAction(action, successMessage) {
+    if (whatsappActionRunning) return;
+    whatsappActionRunning = true;
+    setWhatsappButtonsDisabled(true);
     try {
         const status = await whatsappFetch(`/${action}`, { method: "POST" });
         updateWhatsappStatus(status);
         await loadWhatsappLogs();
         if (typeof showToast === "function") showToast("WhatsApp", successMessage, "success");
+        if (["disconnect", "logout", "reconnect", "connect"].includes(action)) {
+            await waitForWhatsappReadyState();
+        }
     } catch (error) {
         if (typeof showToast === "function") showToast("Erro no WhatsApp", error.message, "error");
+    } finally {
+        whatsappActionRunning = false;
+        setWhatsappButtonsDisabled(false);
+    }
+}
+
+function setWhatsappButtonsDisabled(disabled) {
+    document.querySelectorAll("#tab-whatsapp button[id^='btn-wa-']").forEach(button => {
+        button.disabled = disabled;
+    });
+}
+
+async function waitForWhatsappReadyState() {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        const status = await whatsappFetch("/status");
+        updateWhatsappStatus(status);
+        if (["waiting_qr", "connected"].includes(status.status)) return;
     }
 }
 
 function bindWhatsappControls() {
-    if (whatsappControlsBound) return;
-    whatsappControlsBound = true;
-    document.getElementById("btn-wa-refresh")?.addEventListener("click", refreshWhatsappStatus);
-    document.getElementById("btn-wa-connect")?.addEventListener("click", () => runWhatsappAction("connect", "Conexao solicitada."));
-    document.getElementById("btn-wa-reconnect")?.addEventListener("click", () => runWhatsappAction("reconnect", "Reconexao solicitada."));
-    document.getElementById("btn-wa-disconnect")?.addEventListener("click", () => runWhatsappAction("disconnect", "Sessao desconectada."));
-    document.getElementById("btn-wa-logout")?.addEventListener("click", () => {
+    const refresh = document.getElementById("btn-wa-refresh");
+    const connect = document.getElementById("btn-wa-connect");
+    const reconnect = document.getElementById("btn-wa-reconnect");
+    const disconnect = document.getElementById("btn-wa-disconnect");
+    const logout = document.getElementById("btn-wa-logout");
+
+    if (refresh) refresh.onclick = refreshWhatsappStatus;
+    if (connect) connect.onclick = () => runWhatsappAction("connect", "Conexao solicitada.");
+    if (reconnect) reconnect.onclick = () => runWhatsappAction("reconnect", "Reconexao solicitada.");
+    if (disconnect) disconnect.onclick = () => {
+        if (!confirm("Desconectar a conta atual e gerar um QR Code para outro numero?")) return;
+        runWhatsappAction("disconnect", "Conta desconectada. Gerando um novo QR Code.");
+    };
+    if (logout) logout.onclick = () => {
         if (!confirm("Isso remove a sessao atual e exige novo QR Code. Continuar?")) return;
         runWhatsappAction("logout", "Sessao removida. Escaneie o novo QR Code.");
-    });
+    };
 }
 
 function startWhatsappEvents() {
@@ -174,6 +206,9 @@ async function renderWhatsappPanel() {
     whatsappRendering = true;
     bindWhatsappControls();
     startWhatsappEvents();
+    if (!whatsappPollTimer) {
+        whatsappPollTimer = setInterval(refreshWhatsappStatus, 5000);
+    }
     await refreshWhatsappStatus();
     whatsappRendering = false;
 }
