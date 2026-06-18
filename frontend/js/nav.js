@@ -36,6 +36,10 @@
             pageTitle.innerText = "Tabela de Exames & Valores";
             pageDescription.innerText = "Tabela de exames e procedimentos oficiais da Clínica Lúmina para 2026.";
             renderExams();
+        } else if (tab === "whatsapp") {
+            pageTitle.innerText = "Conexao WhatsApp";
+            pageDescription.innerText = "Gerencie a conexao do agente virtual sem acessar o servidor.";
+            if (typeof renderWhatsappPanel === "function") renderWhatsappPanel();
         } else if (tab === "schedule") {
             pageTitle.innerText = "Grade de Horários Disponíveis";
             pageDescription.innerText = "Configure os dias e horários em que a clínica atende para que o agente virtual possa oferecer aos pacientes.";

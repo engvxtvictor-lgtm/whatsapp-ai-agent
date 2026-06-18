@@ -108,6 +108,10 @@
                     <i class="fa-solid fa-calendar-days"></i>
                     <span>Agenda & Horários</span>
                 </a>
+                <a href="#" class="nav-item" data-tab="whatsapp">
+                    <i class="fa-brands fa-whatsapp"></i>
+                    <span>Conexao WhatsApp</span>
+                </a>
                 <a href="#" class="nav-item" data-tab="campaigns">
                     <i class="fa-solid fa-paper-plane"></i>
                     <span>Campanhas & Follow-Up</span>
@@ -309,6 +313,64 @@
                     <!-- Grade de Horários -->
                     <div class="schedule-grid-container" id="schedule-grid-container">
                         <!-- Gerado Dinamicamente por schedule.js -->
+                    </div>
+                </section>
+
+                <!-- ABA 2.8: CONEXAO WHATSAPP -->
+                <section id="tab-whatsapp" class="tab-panel">
+                    <div class="tab-section-header">
+                        <div>
+                            <h3>Conexao WhatsApp</h3>
+                            <p>Conecte, reconecte e monitore o numero do agente sem acessar terminal ou servidor.</p>
+                        </div>
+                        <button class="btn btn-secondary-outline" id="btn-wa-refresh">
+                            <i class="fa-solid fa-rotate"></i> Atualizar Status
+                        </button>
+                    </div>
+
+                    <div class="wa-dashboard">
+                        <div class="wa-status-card">
+                            <div class="wa-status-top">
+                                <span class="wa-status-dot" id="wa-status-dot"></span>
+                                <div>
+                                    <strong id="wa-status-label">Carregando...</strong>
+                                    <p id="wa-status-description">Consultando gateway WhatsApp.</p>
+                                </div>
+                            </div>
+                            <div class="wa-actions">
+                                <button class="btn btn-gold" id="btn-wa-connect"><i class="fa-solid fa-link"></i> Conectar</button>
+                                <button class="btn btn-secondary-outline" id="btn-wa-reconnect"><i class="fa-solid fa-rotate-right"></i> Reconectar</button>
+                                <button class="btn btn-secondary-outline" id="btn-wa-disconnect"><i class="fa-solid fa-plug-circle-xmark"></i> Desconectar</button>
+                                <button class="btn btn-secondary-outline danger" id="btn-wa-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair da Conta</button>
+                            </div>
+                        </div>
+
+                        <div class="wa-metrics-grid">
+                            <div class="metric-card"><div class="metric-info"><h3>Numero conectado</h3><p id="wa-connected-number">-</p></div><div class="metric-icon wa-bg"><i class="fa-brands fa-whatsapp"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Ultima sincronizacao</h3><p id="wa-updated-at">-</p></div><div class="metric-icon gold-bg"><i class="fa-solid fa-clock"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Ultima atividade</h3><p id="wa-last-activity">-</p></div><div class="metric-icon whatsapp-bg"><i class="fa-solid fa-message"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Tempo conectado</h3><p id="wa-uptime">-</p></div><div class="metric-icon ig-bg"><i class="fa-solid fa-stopwatch"></i></div></div>
+                        </div>
+
+                        <div class="wa-main-grid">
+                            <div class="wa-qr-card">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-qrcode gold-text"></i> QR Code</h3>
+                                    <p>Quando a sessao estiver aguardando QR, escaneie aqui pelo WhatsApp correto.</p>
+                                </div>
+                                <div class="wa-qr-box" id="wa-qr-box">
+                                    <span>Nenhum QR Code ativo.</span>
+                                </div>
+                            </div>
+
+                            <div class="wa-log-card">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-list-check gold-text"></i> Logs recentes</h3>
+                                    <p>Eventos salvos automaticamente durante conexao, reconexao e quedas.</p>
+                                </div>
+                                <div class="wa-log-list" id="wa-log-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -780,6 +842,7 @@
     <script src="/js/followups.js?v=7" defer></script>
     <script src="/js/exams.js?v=7" defer></script>
     <script src="/js/schedule.js?v=15" defer></script>
+    <script src="/js/whatsapp.js?v=1" defer></script>
     <script src="/js/main.js?v=7" defer></script>
 </body>
 </html>

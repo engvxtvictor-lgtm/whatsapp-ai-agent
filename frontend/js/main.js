@@ -29,6 +29,8 @@
                         renderExams();
                     } else if (tab === "schedule") {
                         renderSlots();
+                    } else if (tab === "whatsapp" && typeof renderWhatsappPanel === "function") {
+                        renderWhatsappPanel();
                     }
                 }
 

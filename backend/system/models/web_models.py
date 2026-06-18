@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey, Date
+from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey, Date, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.system.database import Base
 
@@ -102,6 +102,39 @@ class FollowupLogWeb(Base):
     client_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_clients.id"), nullable=False)
     followup_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_followups.id"), nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WhatsappSessionWeb(Base):
+    """Estado gerenciado da sessao WhatsApp por clinica."""
+    __tablename__ = "web_whatsapp_sessions"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    clinic_id: Mapped[str] = mapped_column(String(80), nullable=False, unique=True, default="default")
+    session_id: Mapped[str] = mapped_column(String(120), nullable=False, default="default")
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="disconnected")
+    connected_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_activity_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    last_reconnect_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    disconnect_reason: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    whatsapp_version: Mapped[Optional[str]] = mapped_column(String(80), nullable=True)
+    connected_number: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    qr_updated_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class WhatsappEventLogWeb(Base):
+    """Historico de eventos da integracao WhatsApp."""
+    __tablename__ = "web_whatsapp_event_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    clinic_id: Mapped[str] = mapped_column(String(80), nullable=False, default="default")
+    session_id: Mapped[str] = mapped_column(String(120), nullable=False, default="default")
+    event_type: Mapped[str] = mapped_column(String(80), nullable=False)
+    status: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    message: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    payload: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
 

@@ -1,5 +1,6 @@
 const { getSenderNumber } = require('../utils/jid');
 const { downloadMediaMessage } = require('@whiskeysockets/baileys');
+const { markActivity } = require('../connection');
 
 // ─── Estado Global para as Mensagens ───────────────
 const msgBuffer = {}; // { phone: { timer, texts[], pushName, rawJid, resolvedJid } }
@@ -68,6 +69,7 @@ function setupMessageHandlers(sock) {
   sock.ev.on("messages.upsert", async ({ messages }) => {
     const msg = messages[0];
     if (!msg.message || msg.key.fromMe) return;
+    markActivity();
 
     const remoteJid = msg.key.remoteJid || "";
     const ignoredReason = shouldIgnoreJid(remoteJid);

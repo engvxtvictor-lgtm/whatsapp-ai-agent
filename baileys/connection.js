@@ -1,15 +1,59 @@
 const baileys = require("@whiskeysockets/baileys");
 const makeWASocket = baileys.default;
 const { useMultiFileAuthState, DisconnectReason } = baileys;
-const qrcode = require("qrcode-terminal");
 const fs = require("fs");
 const path = require("path");
 const pino = require("pino");
+const packageInfo = require("./package.json");
 
 let isConnecting = false;
 let sock = null;
 let store = { contacts: {} };
+let activeConnectionCallback = null;
+const statusListeners = new Set();
 const AUTH_DIR = "./auth";
+
+const sessionState = {
+  clinicId: process.env.CLINIC_ID || "default",
+  sessionId: process.env.WHATSAPP_SESSION_ID || "default",
+  status: "disconnected",
+  qr: null,
+  qrUpdatedAt: null,
+  connectedAt: null,
+  lastActivityAt: null,
+  lastReconnectAt: null,
+  disconnectReason: null,
+  whatsappVersion: packageInfo.dependencies?.["@whiskeysockets/baileys"] || "unknown",
+  connectedNumber: null,
+  lastError: null,
+  updatedAt: new Date().toISOString(),
+};
+
+try {
+  const makeInMemoryStore = baileys.makeInMemoryStore;
+  if (typeof makeInMemoryStore === "function") {
+    store = makeInMemoryStore({});
+    console.log("makeInMemoryStore carregado com sucesso.");
+  } else {
+    console.log("makeInMemoryStore nao disponivel nesta versao do Baileys. Usando fallback.");
+  }
+} catch (e) {
+  console.log("Erro ao inicializar store:", e.message, "- Usando fallback.");
+}
+
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function updateState(patch) {
+  Object.assign(sessionState, patch, { updatedAt: nowISO() });
+  const snapshot = getStatus();
+  for (const listener of statusListeners) {
+    try {
+      listener(snapshot);
+    } catch (_) {}
+  }
+}
 
 function clearAuthDirectory() {
   if (!fs.existsSync(AUTH_DIR)) return;
@@ -18,24 +62,68 @@ function clearAuthDirectory() {
   }
 }
 
-try {
-  const makeInMemoryStore = baileys.makeInMemoryStore;
-  if (typeof makeInMemoryStore === "function") {
-    store = makeInMemoryStore({});
-    console.log("✅ makeInMemoryStore carregado com sucesso.");
-  } else {
-    console.log("⚠️ makeInMemoryStore não disponível nesta versão do Baileys. Usando fallback.");
+function getUptimeSeconds() {
+  if (!sessionState.connectedAt) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(sessionState.connectedAt).getTime()) / 1000));
+}
+
+function getStatus() {
+  return {
+    ...sessionState,
+    isConnected: sessionState.status === "connected",
+    uptimeSeconds: getUptimeSeconds(),
+  };
+}
+
+function subscribeStatus(listener) {
+  statusListeners.add(listener);
+  listener(getStatus());
+  return () => statusListeners.delete(listener);
+}
+
+function markActivity() {
+  updateState({ lastActivityAt: nowISO() });
+}
+
+async function destroyCurrentSocket(reason = "manual") {
+  if (!sock) return;
+  const current = sock;
+  sock = null;
+  try {
+    current.ev.removeAllListeners("connection.update");
+    current.ev.removeAllListeners("creds.update");
+    current.ev.removeAllListeners("messages.upsert");
+  } catch (_) {}
+  try {
+    await current.logout();
+  } catch (_) {
+    try {
+      current.end?.();
+    } catch (_) {}
   }
-} catch (e) {
-  console.log("⚠️ Erro ao inicializar store:", e.message, "- Usando fallback.");
+  updateState({
+    status: "disconnected",
+    qr: null,
+    disconnectReason: reason,
+    connectedAt: null,
+    connectedNumber: null,
+  });
 }
 
 async function conectar(onConnectionEstablished) {
-  if (isConnecting) return;
+  if (onConnectionEstablished) activeConnectionCallback = onConnectionEstablished;
+  if (isConnecting) return sock;
+  if (sock && sessionState.status === "connected") return sock;
+
   isConnecting = true;
+  updateState({
+    status: "reconnecting",
+    lastReconnectAt: nowISO(),
+    lastError: null,
+  });
 
   const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-  
+
   sock = makeWASocket({
     auth: state,
     printQRInTerminal: false,
@@ -44,48 +132,129 @@ async function conectar(onConnectionEstablished) {
     logger: pino({ level: "error" }),
   });
 
-  // Vincula o store ao socket para capturar contatos automaticamente
   if (typeof store.bind === "function") store.bind(sock.ev);
 
   sock.ev.on("connection.update", async ({ qr, connection, lastDisconnect }) => {
     if (qr) {
-      console.log("Escaneie o QR Code:");
-      qrcode.generate(qr, { small: true });
+      console.log("QR Code gerado para conexao pelo painel.");
+      updateState({
+        status: "waiting_qr",
+        qr,
+        qrUpdatedAt: nowISO(),
+        disconnectReason: null,
+      });
     }
+
     if (connection === "open") {
-      const userPhone = sock.user?.id ? sock.user.id.split(":")[0].split("@")[0] : "Desconhecido";
-      console.log("✅ WhatsApp conectado! O número do robô é: +" + userPhone);
+      const userPhone = sock.user?.id ? sock.user.id.split(":")[0].split("@")[0] : null;
+      console.log("WhatsApp conectado! O numero do robo e: +" + (userPhone || "desconhecido"));
       isConnecting = false;
-      
-      if (onConnectionEstablished) {
-        onConnectionEstablished(sock);
+      updateState({
+        status: "connected",
+        qr: null,
+        connectedAt: sessionState.connectedAt || nowISO(),
+        lastActivityAt: nowISO(),
+        disconnectReason: null,
+        connectedNumber: userPhone,
+      });
+
+      if (activeConnectionCallback) {
+        activeConnectionCallback(sock);
       }
     }
+
     if (connection === "close") {
       isConnecting = false;
       const statusCode = lastDisconnect?.error?.output?.statusCode;
+      const reason = statusCode ? String(statusCode) : lastDisconnect?.error?.message || "connection_closed";
+      sock = null;
+
       if (statusCode === DisconnectReason.loggedOut) {
-        console.log("⚠️ Deslogado! Apagando credenciais e reiniciando...");
+        console.log("WhatsApp deslogado. Limpando credenciais e aguardando novo QR.");
         try {
           clearAuthDirectory();
         } catch (error) {
           console.error("Erro ao limpar credenciais do WhatsApp:", error.message);
         }
-        setTimeout(() => conectar(onConnectionEstablished), 2000);
+        updateState({
+          status: "waiting_qr",
+          qr: null,
+          connectedAt: null,
+          connectedNumber: null,
+          disconnectReason: reason,
+          lastError: reason,
+        });
+        setTimeout(() => conectar(activeConnectionCallback), 2000);
       } else {
-        console.log("⚠️ Conexão caiu, tentando reconectar...");
-        setTimeout(() => conectar(onConnectionEstablished), 5000);
+        console.log("Conexao caiu, tentando reconectar...");
+        updateState({
+          status: "reconnecting",
+          qr: null,
+          connectedAt: null,
+          disconnectReason: reason,
+          lastError: reason,
+        });
+        setTimeout(() => conectar(activeConnectionCallback), 5000);
       }
     }
   });
 
   sock.ev.on("creds.update", saveCreds);
-  
+
   return sock;
+}
+
+async function reconnect() {
+  updateState({ status: "reconnecting", lastReconnectAt: nowISO() });
+  if (sock) {
+    try {
+      sock.end?.();
+    } catch (_) {}
+    sock = null;
+  }
+  return conectar(activeConnectionCallback);
+}
+
+async function disconnect() {
+  if (sock) {
+    try {
+      sock.end?.();
+    } catch (_) {}
+    sock = null;
+  }
+  updateState({
+    status: "disconnected",
+    qr: null,
+    connectedAt: null,
+    disconnectReason: "manual_disconnect",
+  });
+}
+
+async function logout() {
+  await destroyCurrentSocket("manual_logout");
+  clearAuthDirectory();
+  updateState({
+    status: "waiting_qr",
+    qr: null,
+    connectedAt: null,
+    connectedNumber: null,
+    disconnectReason: "manual_logout",
+  });
+  return conectar(activeConnectionCallback);
 }
 
 function getSock() {
   return sock;
 }
 
-module.exports = { conectar, getSock, store };
+module.exports = {
+  conectar,
+  reconnect,
+  disconnect,
+  logout,
+  getSock,
+  getStatus,
+  subscribeStatus,
+  markActivity,
+  store,
+};

@@ -1,0 +1,10 @@
+**/node_modules
+**/__pycache__
+.venv
+work
+baileys/auth
+baileys/auth_info
+baileys/session
+baileys/sessions
+baileys/store
+.git
