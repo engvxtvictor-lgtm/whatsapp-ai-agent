@@ -3,6 +3,7 @@ let whatsappLastStatus = null;
 let whatsappRendering = false;
 let whatsappPollTimer = null;
 let whatsappActionRunning = false;
+let whatsappNavigationBound = false;
 
 function whatsappAuthHeaders() {
     const token = localStorage.getItem("access_token");
@@ -211,4 +212,33 @@ async function renderWhatsappPanel() {
     }
     await refreshWhatsappStatus();
     whatsappRendering = false;
+}
+
+function initializeWhatsappPanel() {
+    // Os controles precisam funcionar mesmo se o carregamento de outra aba falhar.
+    bindWhatsappControls();
+
+    const whatsappNav = document.querySelector('.nav-item[data-tab="whatsapp"]');
+    if (whatsappNav && !whatsappNavigationBound) {
+        whatsappNavigationBound = true;
+        whatsappNav.addEventListener("click", () => {
+            const pageTitle = document.getElementById("page-title");
+            const pageDescription = document.getElementById("page-description");
+            if (pageTitle) pageTitle.textContent = "Conexao WhatsApp";
+            if (pageDescription) pageDescription.textContent = "Gerencie a conexao do agente virtual sem acessar o servidor.";
+
+            // Executa depois do listener geral de navegacao terminar de trocar a aba.
+            setTimeout(renderWhatsappPanel, 0);
+        });
+    }
+
+    if (document.getElementById("tab-whatsapp")?.classList.contains("active")) {
+        renderWhatsappPanel();
+    }
+}
+
+if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", initializeWhatsappPanel, { once: true });
+} else {
+    initializeWhatsappPanel();
 }
