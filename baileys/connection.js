@@ -3,11 +3,20 @@ const makeWASocket = baileys.default;
 const { useMultiFileAuthState, DisconnectReason } = baileys;
 const qrcode = require("qrcode-terminal");
 const fs = require("fs");
+const path = require("path");
 const pino = require("pino");
 
 let isConnecting = false;
 let sock = null;
 let store = { contacts: {} };
+const AUTH_DIR = "./auth";
+
+function clearAuthDirectory() {
+  if (!fs.existsSync(AUTH_DIR)) return;
+  for (const entry of fs.readdirSync(AUTH_DIR)) {
+    fs.rmSync(path.join(AUTH_DIR, entry), { recursive: true, force: true });
+  }
+}
 
 try {
   const makeInMemoryStore = baileys.makeInMemoryStore;
@@ -25,7 +34,7 @@ async function conectar(onConnectionEstablished) {
   if (isConnecting) return;
   isConnecting = true;
 
-  const { state, saveCreds } = await useMultiFileAuthState("./auth");
+  const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
   
   sock = makeWASocket({
     auth: state,
@@ -57,7 +66,11 @@ async function conectar(onConnectionEstablished) {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       if (statusCode === DisconnectReason.loggedOut) {
         console.log("⚠️ Deslogado! Apagando credenciais e reiniciando...");
-        fs.rmSync("./auth", { recursive: true, force: true });
+        try {
+          clearAuthDirectory();
+        } catch (error) {
+          console.error("Erro ao limpar credenciais do WhatsApp:", error.message);
+        }
         setTimeout(() => conectar(onConnectionEstablished), 2000);
       } else {
         console.log("⚠️ Conexão caiu, tentando reconectar...");
