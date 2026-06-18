@@ -71,6 +71,12 @@ async function whatsappFetch(path, options = {}) {
             ...(options.headers || {}),
         },
     });
+    if (res.status === 401) {
+        localStorage.removeItem("access_token");
+        localStorage.removeItem("admin_email");
+        window.location.reload();
+        throw new Error("Sua sessao do painel expirou. Entre novamente.");
+    }
     if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.detail || data.error || "Falha ao consultar WhatsApp.");
