@@ -54,10 +54,10 @@ async def run_migrations() -> None:
                     text(
                         """
                         INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
-                        SELECT 5, :hour, 1, TRUE
+                        SELECT 5, CAST(:hour AS VARCHAR), 1, TRUE
                         WHERE NOT EXISTS (
                             SELECT 1 FROM web_schedule_slots
-                            WHERE weekday = 5 AND time_str = :hour
+                            WHERE weekday = 5 AND time_str = CAST(:hour AS VARCHAR)
                         )
                         """
                     ),
