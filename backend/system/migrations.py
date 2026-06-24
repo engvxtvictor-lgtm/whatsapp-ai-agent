@@ -46,6 +46,28 @@ async def run_migrations() -> None:
                 # Coluna já existe — ignorar silenciosamente
                 logger.debug(f"Migração já aplicada (ignorada): {description}")
 
+        # v3: Garante slots de sábado de manhã sem duplicar em bancos já configurados.
+        saturday_hours = ["08:00", "09:00", "10:00", "11:00"]
+        for hour in saturday_hours:
+            try:
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
+                        SELECT 5, :hour, 1, TRUE
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM web_schedule_slots
+                            WHERE weekday = 5 AND time_str = :hour
+                        )
+                        """
+                    ),
+                    {"hour": hour},
+                )
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Erro ao garantir slot de sábado {hour}: {e}")
+
         # Post-migration: Atualizar senhas vazias para 'senha123'
         try:
             import bcrypt

@@ -175,7 +175,7 @@ async def seed_db():
         ]
         session.add_all(followups)
 
-        # Criando slots de agendamento padrão (Seg-Sex, 08h às 18h)
+        # Criando slots de agendamento padrão (Seg-Sex dia todo, Sabado pela manha)
         print("Criando slots de agendamento padrao...")
         slots = []
         for weekday in range(5):  # 0=Seg, 4=Sex
@@ -188,6 +188,15 @@ async def seed_db():
                         is_active=True
                     )
                 )
+        for hour in ["08:00", "09:00", "10:00", "11:00"]:
+            slots.append(
+                ScheduleSlotWeb(
+                    weekday=5,
+                    time_str=hour,
+                    max_patients=1,
+                    is_active=True
+                )
+            )
         session.add_all(slots)
         await session.commit()
             

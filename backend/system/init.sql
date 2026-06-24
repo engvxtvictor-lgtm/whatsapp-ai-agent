@@ -134,7 +134,7 @@ VALUES
 ('Feedback de Sensibilidade', 'Clareamento', 3, 'Olá [NOME], sentiu alguma sensibilidade após a sessão de [SERVIÇO]? Lembre-se de evitar alimentos corantes hoje!', TRUE)
 ON CONFLICT DO NOTHING;
 
--- Inserção de slots na grade (Seg-Sex, 08h às 18h, de hora em hora)
+-- Inserção de slots na grade (Seg-Sex dia todo, Sábado pela manhã)
 INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
 VALUES
 -- Segunda-feira (weekday = 0)
@@ -151,5 +151,7 @@ VALUES
 (3, '14:00', 1, TRUE), (3, '15:00', 1, TRUE), (3, '16:00', 1, TRUE), (3, '17:00', 1, TRUE), (3, '18:00', 1, TRUE),
 -- Sexta-feira (weekday = 4)
 (4, '08:00', 1, TRUE), (4, '09:00', 1, TRUE), (4, '10:00', 1, TRUE), (4, '11:00', 1, TRUE),
-(4, '14:00', 1, TRUE), (4, '15:00', 1, TRUE), (4, '16:00', 1, TRUE), (4, '17:00', 1, TRUE), (4, '18:00', 1, TRUE);
+(4, '14:00', 1, TRUE), (4, '15:00', 1, TRUE), (4, '16:00', 1, TRUE), (4, '17:00', 1, TRUE), (4, '18:00', 1, TRUE),
+-- Sábado (weekday = 5)
+(5, '08:00', 1, TRUE), (5, '09:00', 1, TRUE), (5, '10:00', 1, TRUE), (5, '11:00', 1, TRUE);
 

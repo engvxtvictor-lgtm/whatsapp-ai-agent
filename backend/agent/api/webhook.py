@@ -168,7 +168,8 @@ async def _ask_for_service_before_scheduling(phone: str, reply_jid: str, session
         session = await _send_services_pdf(phone, reply_jid, session)
     message = (
         "Antes de marcar o horário, preciso saber qual procedimento você deseja realizar. "
-        "Pode escolher um da tabela ou escrever outro procedimento, se não estiver na lista. 😊"
+        "Pode escolher um da tabela ou escrever outro procedimento, se não estiver na lista. "
+        "Ah, e nossa avaliação é gratuita. 😊"
     )
     await whatsapp.send_message(phone, message, reply_jid=reply_jid)
     return await sess.add_to_history(session, "assistant", message)
@@ -293,7 +294,7 @@ async def _handle_price_question(phone: str, text: str, session: dict, reply_jid
         session["awaiting_service"] = False
         message = (
             f"{exam.name} fica a partir de {_format_brl(exam.price)}. "
-            "O valor final pode variar conforme a avaliação clínica. 😊"
+            "O valor final pode variar conforme a avaliação clínica. Nossa avaliação é gratuita. 😊"
         )
 
     await whatsapp.send_message(phone, message, reply_jid=reply_jid)

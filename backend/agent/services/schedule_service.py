@@ -30,11 +30,13 @@ WEEKDAY_ALIASES = {
     "domingo": 6,
 }
 
-BUSINESS_HOURS_TEXT = "segunda a sexta, das 08h00 às 12h00 e das 14h00 às 18h00"
-ALLOWED_APPOINTMENT_TIMES = {
+BUSINESS_HOURS_TEXT = "segunda a sexta, das 08h00 às 12h00 e das 14h00 às 18h00; sábado, das 08h00 às 12h00"
+WEEKDAY_APPOINTMENT_TIMES = {
     "08:00", "09:00", "10:00", "11:00",
     "14:00", "15:00", "16:00", "17:00", "18:00",
 }
+SATURDAY_APPOINTMENT_TIMES = {"08:00", "09:00", "10:00", "11:00"}
+ALLOWED_APPOINTMENT_TIMES = WEEKDAY_APPOINTMENT_TIMES | SATURDAY_APPOINTMENT_TIMES
 
 
 def is_business_time(time_str: str | None) -> bool:
@@ -44,7 +46,18 @@ def is_business_time(time_str: str | None) -> bool:
 
 
 def is_business_day(slot_date: date | None) -> bool:
-    return bool(slot_date and 0 <= slot_date.weekday() <= 4)
+    return bool(slot_date and 0 <= slot_date.weekday() <= 5)
+
+
+def is_business_slot(weekday: int | None, time_str: str | None) -> bool:
+    normalized = normalize_time(time_str)
+    if normalized is None or weekday is None:
+        return False
+    if 0 <= weekday <= 4:
+        return normalized in WEEKDAY_APPOINTMENT_TIMES
+    if weekday == 5:
+        return normalized in SATURDAY_APPOINTMENT_TIMES
+    return False
 
 
 def business_hours_message() -> str:
@@ -78,7 +91,7 @@ async def get_available_slots(days_ahead: int = 7) -> list[dict]:
 
             day_slots = [s for s in slots if s.weekday == weekday]
             for slot in day_slots:
-                if not is_business_time(slot.time_str):
+                if not is_business_slot(weekday, slot.time_str):
                     continue
                 # Conta quantos clientes pendentes/confirmados já têm esse slot nessa data
                 count_res = await db.execute(
@@ -134,7 +147,7 @@ async def reserve_slot(slot_id: int, slot_date: date, client_id: int) -> bool:
         # Revalida vaga em tempo real
         slot_res = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
         slot = slot_res.scalars().first()
-        if not slot or not slot.is_active or not is_business_day(slot_date) or not is_business_time(slot.time_str):
+        if not slot or not slot.is_active or not is_business_day(slot_date) or not is_business_slot(slot_date.weekday(), slot.time_str):
             return False
 
         count_res = await db.execute(
@@ -170,7 +183,7 @@ async def find_slot_by_date_time(date_iso: str, time_str: str) -> ScheduleSlotWe
     except ValueError:
         return None
 
-    if not is_business_day(target_date) or not is_business_time(time_str):
+    if not is_business_day(target_date) or not is_business_slot(weekday, time_str):
         return None
 
     async with AsyncSession() as db:
