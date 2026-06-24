@@ -30,6 +30,26 @@ WEEKDAY_ALIASES = {
     "domingo": 6,
 }
 
+BUSINESS_HOURS_TEXT = "segunda a sexta, das 08h00 às 12h00 e das 14h00 às 18h00"
+ALLOWED_APPOINTMENT_TIMES = {
+    "08:00", "09:00", "10:00", "11:00",
+    "14:00", "15:00", "16:00", "17:00", "18:00",
+}
+
+
+def is_business_time(time_str: str | None) -> bool:
+    """Valida horarios reais de atendimento da clinica."""
+    normalized = normalize_time(time_str)
+    return bool(normalized and normalized in ALLOWED_APPOINTMENT_TIMES)
+
+
+def is_business_day(slot_date: date | None) -> bool:
+    return bool(slot_date and 0 <= slot_date.weekday() <= 4)
+
+
+def business_hours_message() -> str:
+    return f"Nosso horário de funcionamento é de {BUSINESS_HOURS_TEXT}."
+
 
 async def get_available_slots(days_ahead: int = 7) -> list[dict]:
     """
@@ -58,6 +78,8 @@ async def get_available_slots(days_ahead: int = 7) -> list[dict]:
 
             day_slots = [s for s in slots if s.weekday == weekday]
             for slot in day_slots:
+                if not is_business_time(slot.time_str):
+                    continue
                 # Conta quantos clientes pendentes/confirmados já têm esse slot nessa data
                 count_res = await db.execute(
                     select(func.count(ClientWeb.id)).where(
@@ -112,7 +134,7 @@ async def reserve_slot(slot_id: int, slot_date: date, client_id: int) -> bool:
         # Revalida vaga em tempo real
         slot_res = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
         slot = slot_res.scalars().first()
-        if not slot or not slot.is_active:
+        if not slot or not slot.is_active or not is_business_day(slot_date) or not is_business_time(slot.time_str):
             return False
 
         count_res = await db.execute(
@@ -146,6 +168,9 @@ async def find_slot_by_date_time(date_iso: str, time_str: str) -> ScheduleSlotWe
         target_date = date.fromisoformat(date_iso)
         weekday = target_date.weekday()
     except ValueError:
+        return None
+
+    if not is_business_day(target_date) or not is_business_time(time_str):
         return None
 
     async with AsyncSession() as db:

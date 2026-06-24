@@ -38,6 +38,17 @@ SERVICES_PDF_KEYWORDS = [
     "exames", "catálogo", "catalogo", "pdf"
 ]
 
+PRICE_KEYWORDS = [
+    "valor", "valores", "preco", "precos", "preço", "preços", "quanto custa",
+    "custa quanto", "orçamento", "orcamento", "qual o preço", "qual valor",
+]
+
+PDF_ONLY_KEYWORDS = [
+    "tabela", "catálogo", "catalogo", "pdf", "lista de preços", "lista de precos",
+    "todos os procedimentos", "procedimentos e valores", "serviços e valores",
+    "servicos e valores",
+]
+
 LOCATION_KEYWORDS = [
     "endereço", "endereco", "localização", "localizacao", "localizaçao",
     "onde fica", "mapa", "maps", "rota", "chegar", "como chegar",
@@ -81,6 +92,16 @@ def _contains_any(text_lower: str, keywords: list[str]) -> bool:
 
 def _wants_services_pdf(text: str) -> bool:
     return _contains_any(text.lower(), SERVICES_PDF_KEYWORDS)
+
+
+def _wants_price(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return any(_normalize_label(keyword) in normalized for keyword in PRICE_KEYWORDS)
+
+
+def _wants_pdf_only(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return any(_normalize_label(keyword) in normalized for keyword in PDF_ONLY_KEYWORDS)
 
 
 def _wants_location(text: str) -> bool:
@@ -230,6 +251,58 @@ async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
     )
 
 
+def _format_brl(value: float | int | None) -> str:
+    if value is None:
+        return "valor sob avaliação"
+    return f"R$ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def _handle_price_question(phone: str, text: str, session: dict, reply_jid: str) -> bool:
+    detected_service, detected_exam_id = await _detect_service_from_text(text, allow_custom=False)
+    if not detected_service:
+        message = (
+            "Claro. Sobre qual procedimento você gostaria de saber o valor? "
+            "Pode me mandar o nome, por exemplo: raspagem, clareamento ou restauração. 😊"
+        )
+        await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+        session = await sess.add_to_history(session, "user", text)
+        session = await sess.add_to_history(session, "assistant", message)
+        await sess.save_session(phone, session)
+        return True
+
+    exam = None
+    async with AsyncSession() as db:
+        if detected_exam_id:
+            res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(detected_exam_id)))
+            exam = res.scalars().first()
+        if not exam:
+            res = await db.execute(select(ExamWeb))
+            for candidate in res.scalars().all():
+                if _service_matches_text(detected_service, candidate.name):
+                    exam = candidate
+                    break
+
+    if not exam:
+        message = (
+            f"Consigo te ajudar com {detected_service}, mas o valor exato precisa ser conferido pela recepção. "
+            "Se quiser, posso seguir com uma solicitação de agendamento. 😊"
+        )
+    else:
+        session["service"] = exam.name
+        session["exam_id"] = exam.id
+        session["awaiting_service"] = False
+        message = (
+            f"{exam.name} fica a partir de {_format_brl(exam.price)}. "
+            "O valor final pode variar conforme a avaliação clínica. 😊"
+        )
+
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "user", text)
+    session = await sess.add_to_history(session, "assistant", message)
+    await sess.save_session(phone, session)
+    return True
+
+
 def _format_client_appointment(client: ClientWeb) -> str:
     if client.slot_date and client.slot:
         return f"{client.slot_date.strftime('%d/%m/%Y')} às {client.slot.time_str}"
@@ -286,6 +359,7 @@ async def _handle_requested_slot(phone: str, text: str, session: dict, reply_jid
         session["awaiting_slot_confirmation"] = False
         message = (
             f"Esse horário ({requested_date.strftime('%d/%m/%Y')} às {requested_time}) não está disponível na agenda.\n\n"
+            f"{schedule_service.business_hours_message()}\n\n"
             f"{await _available_slots_message()}"
         )
         await whatsapp.send_message(phone, message, reply_jid=reply_jid)
@@ -580,11 +654,15 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
         await sess.save_session(phone, session)
         return
 
-    if _wants_services_pdf(text):
+    if _wants_pdf_only(text):
         session = await sess.add_to_history(session, "user", censored_text)
         session = await _send_services_pdf(phone, phone_for_reply, session)
         await sess.save_session(phone, session)
         return
+
+    if _wants_price(text):
+        if await _handle_price_question(phone, censored_text, session, phone_for_reply):
+            return
 
     detected_service, detected_exam_id = await _detect_service_from_text(
         text,

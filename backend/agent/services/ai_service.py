@@ -521,7 +521,15 @@ async def get_response(message: str, history: list, faq_context: str = "", media
         logger.error(f"Erro ao carregar slots de agenda: {e}")
 
     # 3. Monta o system prompt completo
-    system = SYSTEM_PROMPT
+    system = (
+        SYSTEM_PROMPT
+        + "\n\nREGRA DE HORARIO: O horario correto de funcionamento e segunda a sexta, "
+        "das 08h00 as 12h00 e das 14h00 as 18h00. Nunca ofereca nem aceite horarios "
+        "no intervalo de almoco, como 12h, 13h ou 13h30."
+        "\nREGRA DE PRECO: Se o paciente perguntar o valor/preco de um procedimento "
+        "especifico, responda diretamente com o valor desse procedimento usando a lista oficial. "
+        "Nao diga que vai enviar PDF/tabela nesse caso."
+    )
     if services_context:
         system += services_context
     if slots_context:

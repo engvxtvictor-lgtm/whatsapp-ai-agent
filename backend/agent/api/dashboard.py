@@ -837,11 +837,17 @@ async def get_slots(db: AsyncSession = Depends(get_db)):
         .order_by(ScheduleSlotWeb.weekday, ScheduleSlotWeb.time_str)
     )
     slots = result.scalars().all()
-    return slots
+    return [slot for slot in slots if schedule_service.is_business_time(slot.time_str)]
 
 
 @router.post("/slots", response_model=SlotSchema)
 async def create_slot(data: SlotSchema, db: AsyncSession = Depends(get_db)):
+    if not schedule_service.is_business_time(data.time_str):
+        raise HTTPException(
+            status_code=400,
+            detail="Horário fora do funcionamento da clínica: 08h às 12h e 14h às 18h.",
+        )
+
     new_slot = ScheduleSlotWeb(
         weekday=data.weekday,
         time_str=data.time_str,
