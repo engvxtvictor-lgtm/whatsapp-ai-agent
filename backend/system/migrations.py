@@ -79,9 +79,47 @@ async def run_migrations() -> None:
                             REFERENCES web_clients(id) ON DELETE CASCADE,
                         appointment_date DATE NOT NULL,
                         appointment_time VARCHAR(5) NOT NULL,
+                        reminder_type VARCHAR(20) NOT NULL DEFAULT 'day_before',
                         sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         CONSTRAINT uq_appointment_reminder_client_schedule
-                            UNIQUE (client_id, appointment_date, appointment_time)
+                            UNIQUE (
+                                client_id,
+                                appointment_date,
+                                appointment_time,
+                                reminder_type
+                            )
+                    )
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    ADD COLUMN IF NOT EXISTS reminder_type VARCHAR(20)
+                    NOT NULL DEFAULT 'day_before'
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    DROP CONSTRAINT IF EXISTS
+                    uq_appointment_reminder_client_schedule
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    ADD CONSTRAINT uq_appointment_reminder_client_schedule
+                    UNIQUE (
+                        client_id,
+                        appointment_date,
+                        appointment_time,
+                        reminder_type
                     )
                     """
                 )

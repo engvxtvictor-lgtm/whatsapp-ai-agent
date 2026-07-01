@@ -112,6 +112,7 @@ class AppointmentReminderLogWeb(Base):
             "client_id",
             "appointment_date",
             "appointment_time",
+            "reminder_type",
             name="uq_appointment_reminder_client_schedule",
         ),
     )
@@ -124,6 +125,7 @@ class AppointmentReminderLogWeb(Base):
     )
     appointment_date: Mapped[date] = mapped_column(Date, nullable=False)
     appointment_time: Mapped[str] = mapped_column(String(5), nullable=False)
+    reminder_type: Mapped[str] = mapped_column(String(20), nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

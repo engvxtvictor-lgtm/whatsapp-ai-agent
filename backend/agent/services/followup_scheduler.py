@@ -183,9 +183,11 @@ def _get_client_schedule(client: ClientWeb):
     return appointment_dt.date(), appointment_dt.strftime("%H:%M")
 
 
-async def run_appointment_reminder_check():
-    """Envia uma vez o lembrete das consultas confirmadas do dia seguinte."""
-    reminder_date = datetime.now(CLINIC_TIMEZONE).date() + timedelta(days=1)
+async def _run_appointment_reminder_check(reminder_type: str):
+    """Envia uma vez o lembrete do tipo solicitado."""
+    today = datetime.now(CLINIC_TIMEZONE).date()
+    is_same_day = reminder_type == "same_day"
+    reminder_date = today if is_same_day else today + timedelta(days=1)
     sent_count = 0
 
     logger.info(
@@ -215,6 +217,7 @@ async def run_appointment_reminder_check():
                         AppointmentReminderLogWeb.client_id == client.id,
                         AppointmentReminderLogWeb.appointment_date == appointment_date,
                         AppointmentReminderLogWeb.appointment_time == appointment_time,
+                        AppointmentReminderLogWeb.reminder_type == reminder_type,
                     )
                 )
             )
@@ -227,9 +230,14 @@ async def run_appointment_reminder_check():
                     f"\n➕ *Serviço adicional:* {client.upsell_service}"
                 )
 
+            reminder_intro = (
+                "Sua consulta na Clínica Lúmina é hoje"
+                if is_same_day
+                else "Passando para lembrar que sua consulta na Clínica Lúmina é amanhã"
+            )
             message = (
                 f"Olá, *{client.name}*! 😊\n\n"
-                "Passando para lembrar que sua consulta na Clínica Lúmina é amanhã:\n\n"
+                f"{reminder_intro}:\n\n"
                 f"🦷 *Procedimento:* {client.service}"
                 f"{additional_service}\n"
                 f"📅 *Data:* {appointment_date.strftime('%d/%m/%Y')}\n"
@@ -251,6 +259,7 @@ async def run_appointment_reminder_check():
                     client_id=client.id,
                     appointment_date=appointment_date,
                     appointment_time=appointment_time,
+                    reminder_type=reminder_type,
                 )
             )
             await db.commit()
@@ -260,6 +269,16 @@ async def run_appointment_reminder_check():
         "Scheduler: lembretes concluidos. %s mensagem(ns) enviada(s).",
         sent_count,
     )
+
+
+async def run_appointment_reminder_check():
+    """Envia o lembrete na vespera da consulta."""
+    await _run_appointment_reminder_check("day_before")
+
+
+async def run_same_day_appointment_reminder_check():
+    """Envia o lembrete na manha da consulta."""
+    await _run_appointment_reminder_check("same_day")
 
 
 def create_scheduler() -> AsyncIOScheduler:
@@ -283,4 +302,13 @@ def create_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,
     )
     logger.info("Scheduler de lembretes configurado: todo dia as 09:05.")
+    scheduler.add_job(
+        run_same_day_appointment_reminder_check,
+        trigger=CronTrigger(hour=7, minute=0, timezone=CLINIC_TIMEZONE),
+        id="same_day_appointment_reminder_daily",
+        name="Lembrete de Consultas do Mesmo Dia",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info("Scheduler de lembretes do mesmo dia configurado: 07:00.")
     return scheduler

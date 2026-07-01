@@ -85,9 +85,10 @@ CREATE TABLE IF NOT EXISTS web_appointment_reminder_logs (
     client_id INTEGER NOT NULL REFERENCES web_clients(id) ON DELETE CASCADE,
     appointment_date DATE NOT NULL,
     appointment_time VARCHAR(5) NOT NULL,
+    reminder_type VARCHAR(20) NOT NULL,
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT uq_appointment_reminder_client_schedule
-        UNIQUE (client_id, appointment_date, appointment_time)
+        UNIQUE (client_id, appointment_date, appointment_time, reminder_type)
 );
 
 -- Inserção de dados iniciais para testes
