@@ -79,6 +79,17 @@ CREATE TABLE IF NOT EXISTS web_followup_logs (
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Log de lembretes enviados na vespera da consulta
+CREATE TABLE IF NOT EXISTS web_appointment_reminder_logs (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES web_clients(id) ON DELETE CASCADE,
+    appointment_date DATE NOT NULL,
+    appointment_time VARCHAR(5) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_appointment_reminder_client_schedule
+        UNIQUE (client_id, appointment_date, appointment_time)
+);
+
 -- Inserção de dados iniciais para testes
 INSERT INTO web_admins (name, email, role, avatar)
 VALUES 

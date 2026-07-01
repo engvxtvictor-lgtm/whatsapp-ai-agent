@@ -7,13 +7,22 @@ a mensagem no WhatsApp automaticamente.
 """
 import re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 from backend.system.database import AsyncSession
-from backend.system.models.web_models import ClientWeb, FollowupWeb, FollowupLogWeb
+from backend.system.models.web_models import (
+    AppointmentReminderLogWeb,
+    ClientWeb,
+    FollowupWeb,
+    FollowupLogWeb,
+)
 from backend.agent.services import whatsapp
 from backend.system.logger import logger
+
+CLINIC_TIMEZONE = ZoneInfo("America/Sao_Paulo")
 
 
 # Formatos de data aceitos no campo appointment_date dos clientes
@@ -163,9 +172,99 @@ async def run_followup_check():
     logger.info(f"⏰ Scheduler: verificação concluída. {sent_count} follow-up(s) enviado(s).")
 
 
+def _get_client_schedule(client: ClientWeb):
+    """Retorna data e horario normalizados do agendamento."""
+    if client.slot_date and client.slot and client.slot.time_str:
+        return client.slot_date, client.slot.time_str
+
+    appointment_dt = _parse_appointment_date(client.appointment_date or "")
+    if not appointment_dt:
+        return None
+    return appointment_dt.date(), appointment_dt.strftime("%H:%M")
+
+
+async def run_appointment_reminder_check():
+    """Envia uma vez o lembrete das consultas confirmadas do dia seguinte."""
+    reminder_date = datetime.now(CLINIC_TIMEZONE).date() + timedelta(days=1)
+    sent_count = 0
+
+    logger.info(
+        "Scheduler: verificando lembretes de consultas para %s.",
+        reminder_date.strftime("%d/%m/%Y"),
+    )
+
+    async with AsyncSession() as db:
+        clients_result = await db.execute(
+            select(ClientWeb)
+            .options(selectinload(ClientWeb.slot))
+            .where(ClientWeb.status == "confirmed")
+        )
+
+        for client in clients_result.scalars().all():
+            schedule = _get_client_schedule(client)
+            if not schedule:
+                continue
+
+            appointment_date, appointment_time = schedule
+            if appointment_date != reminder_date:
+                continue
+
+            existing_result = await db.execute(
+                select(AppointmentReminderLogWeb.id).where(
+                    and_(
+                        AppointmentReminderLogWeb.client_id == client.id,
+                        AppointmentReminderLogWeb.appointment_date == appointment_date,
+                        AppointmentReminderLogWeb.appointment_time == appointment_time,
+                    )
+                )
+            )
+            if existing_result.scalar_one_or_none() is not None:
+                continue
+
+            additional_service = ""
+            if client.upsell_success and client.upsell_service:
+                additional_service = (
+                    f"\n➕ *Serviço adicional:* {client.upsell_service}"
+                )
+
+            message = (
+                f"Olá, *{client.name}*! 😊\n\n"
+                "Passando para lembrar que sua consulta na Clínica Lúmina é amanhã:\n\n"
+                f"🦷 *Procedimento:* {client.service}"
+                f"{additional_service}\n"
+                f"📅 *Data:* {appointment_date.strftime('%d/%m/%Y')}\n"
+                f"🕐 *Horário:* {appointment_time}\n\n"
+                "Caso precise remarcar, fale conosco por aqui. "
+                "Estamos aguardando você! 🦷✨"
+            )
+
+            success = await whatsapp.send_message(client.phone, message)
+            if not success:
+                logger.warning(
+                    "Falha ao enviar lembrete de consulta para %s***.",
+                    client.phone[:6],
+                )
+                continue
+
+            db.add(
+                AppointmentReminderLogWeb(
+                    client_id=client.id,
+                    appointment_date=appointment_date,
+                    appointment_time=appointment_time,
+                )
+            )
+            await db.commit()
+            sent_count += 1
+
+    logger.info(
+        "Scheduler: lembretes concluidos. %s mensagem(ns) enviada(s).",
+        sent_count,
+    )
+
+
 def create_scheduler() -> AsyncIOScheduler:
     """Cria e configura o scheduler. Chame start() após criar."""
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone=CLINIC_TIMEZONE)
     scheduler.add_job(
         run_followup_check,
         trigger=CronTrigger(hour=9, minute=0),   # Todo dia às 09:00
@@ -175,4 +274,13 @@ def create_scheduler() -> AsyncIOScheduler:
         misfire_grace_time=3600,                 # Tolera até 1h de atraso no boot
     )
     logger.info("📅 Scheduler de follow-up configurado: todo dia às 09:00.")
+    scheduler.add_job(
+        run_appointment_reminder_check,
+        trigger=CronTrigger(hour=9, minute=5, timezone=CLINIC_TIMEZONE),
+        id="appointment_reminder_daily",
+        name="Lembrete Diario de Consultas",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    logger.info("Scheduler de lembretes configurado: todo dia as 09:05.")
     return scheduler

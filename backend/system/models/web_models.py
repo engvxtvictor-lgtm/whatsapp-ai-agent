@@ -1,6 +1,6 @@
 from datetime import datetime, date
 from typing import Optional
-from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey, Date, Text
+from sqlalchemy import String, DateTime, Boolean, Integer, ForeignKey, Date, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from backend.system.database import Base
 
@@ -101,6 +101,29 @@ class FollowupLogWeb(Base):
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     client_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_clients.id"), nullable=False)
     followup_id: Mapped[int] = mapped_column(Integer, ForeignKey("web_followups.id"), nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+class AppointmentReminderLogWeb(Base):
+    """Registra lembretes enviados para uma data e horario especificos."""
+    __tablename__ = "web_appointment_reminder_logs"
+    __table_args__ = (
+        UniqueConstraint(
+            "client_id",
+            "appointment_date",
+            "appointment_time",
+            name="uq_appointment_reminder_client_schedule",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    client_id: Mapped[int] = mapped_column(
+        Integer,
+        ForeignKey("web_clients.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    appointment_date: Mapped[date] = mapped_column(Date, nullable=False)
+    appointment_time: Mapped[str] = mapped_column(String(5), nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 

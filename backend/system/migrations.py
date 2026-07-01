@@ -68,6 +68,29 @@ async def run_migrations() -> None:
                 await session.rollback()
                 logger.error(f"Erro ao garantir slot de sábado {hour}: {e}")
 
+        # v4: Registra lembretes por consulta para impedir envios duplicados.
+        try:
+            await session.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS web_appointment_reminder_logs (
+                        id SERIAL PRIMARY KEY,
+                        client_id INTEGER NOT NULL
+                            REFERENCES web_clients(id) ON DELETE CASCADE,
+                        appointment_date DATE NOT NULL,
+                        appointment_time VARCHAR(5) NOT NULL,
+                        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT uq_appointment_reminder_client_schedule
+                            UNIQUE (client_id, appointment_date, appointment_time)
+                    )
+                    """
+                )
+            )
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Erro ao criar log de lembretes de consulta: {e}")
+
         # Post-migration: Atualizar senhas vazias para 'senha123'
         try:
             import bcrypt
