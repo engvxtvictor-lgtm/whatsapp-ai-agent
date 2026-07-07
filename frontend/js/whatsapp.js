@@ -141,7 +141,7 @@ async function runWhatsappAction(action, successMessage) {
         await loadWhatsappLogs();
         if (typeof showToast === "function") showToast("WhatsApp", successMessage, "success");
         if (["disconnect", "logout", "reconnect", "connect"].includes(action)) {
-            await waitForWhatsappReadyState();
+            await waitForWhatsappReadyState(action);
         }
     } catch (error) {
         if (typeof showToast === "function") showToast("Erro no WhatsApp", error.message, "error");
@@ -157,13 +157,22 @@ function setWhatsappButtonsDisabled(disabled) {
     });
 }
 
-async function waitForWhatsappReadyState() {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
+async function waitForWhatsappReadyState(action = "") {
+    for (let attempt = 0; attempt < 30; attempt += 1) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const status = await whatsappFetch("/status");
         updateWhatsappStatus(status);
+        if (status.status === "waiting_qr") {
+            await loadWhatsappQr();
+            return;
+        }
         if (["waiting_qr", "connected"].includes(status.status)) return;
+        if (attempt === 5 && ["disconnect", "logout"].includes(action) && status.status === "disconnected") {
+            const nextStatus = await whatsappFetch("/connect", { method: "POST" });
+            updateWhatsappStatus(nextStatus);
+        }
     }
+    await loadWhatsappQr();
 }
 
 function bindWhatsappControls() {

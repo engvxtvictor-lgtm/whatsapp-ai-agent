@@ -67,6 +67,12 @@ GENERIC_SERVICE_NAMES = {
     "aguardando procedimento"
 }
 
+EVALUATION_SERVICE_NAME = "Avaliacao gratuita"
+
+EVALUATION_KEYWORDS = [
+    "avaliacao", "avalia", "avaliar", "tratamento urgente", "urgente"
+]
+
 SERVICE_MATCH_STOPWORDS = {
     "consulta", "consultar", "agendamento", "agendar", "atendimento",
     "avaliacao", "avaliacao", "procedimento", "procedimentos", "servico",
@@ -119,6 +125,8 @@ def _normalize_label(value: str | None) -> str:
 
 def _is_generic_service(value: str | None) -> bool:
     normalized = _normalize_label(value)
+    if normalized == _normalize_label(EVALUATION_SERVICE_NAME):
+        return False
     return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
 
 
@@ -202,8 +210,17 @@ def _service_matches_text(text: str, service_name: str) -> bool:
     return bool(text_words & service_words)
 
 
+def _wants_evaluation_service(text: str) -> bool:
+    normalized = _normalize_label(text)
+    if not normalized:
+        return False
+    return any(_normalize_label(keyword) in normalized for keyword in EVALUATION_KEYWORDS)
+
+
 async def _detect_service_from_text(text: str, allow_custom: bool = False) -> tuple[str | None, int | None]:
     if _is_generic_service(text):
+        if _wants_evaluation_service(text):
+            return EVALUATION_SERVICE_NAME, None
         return None, None
 
     async with AsyncSession() as db:
@@ -213,6 +230,9 @@ async def _detect_service_from_text(text: str, allow_custom: bool = False) -> tu
     for exam in exams:
         if _service_matches_text(text, exam.name):
             return exam.name, exam.id
+
+    if _wants_evaluation_service(text):
+        return EVALUATION_SERVICE_NAME, None
 
     text_norm = _normalize_label(text)
     custom_prefixes = ("outro", "outros", "nao esta na lista", "não está na lista", "nao tem na lista", "não tem na lista")
@@ -672,8 +692,7 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
     if detected_service:
         session["service"] = detected_service
         session["awaiting_service"] = False
-        if detected_exam_id:
-            session["exam_id"] = detected_exam_id
+        session["exam_id"] = detected_exam_id
     elif session.get("awaiting_service"):
         session = await sess.add_to_history(session, "user", censored_text)
         session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
@@ -778,7 +797,20 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                         continue
                     if _is_generic_service(metadata[key]):
                         continue
-                    session[key] = metadata[key]
+                    detected_meta_service, detected_meta_exam_id = await _detect_service_from_text(str(metadata[key]), allow_custom=False)
+                    if not detected_meta_service:
+                        continue
+                    if not (
+                        _service_matches_text(text, detected_meta_service)
+                        or _wants_evaluation_service(text)
+                        or session.get("awaiting_service")
+                    ):
+                        logger.warning(
+                            f"Ignorando servico inferido pela IA sem confirmacao textual: {metadata[key]!r}"
+                        )
+                        continue
+                    session["exam_id"] = detected_meta_exam_id
+                    session[key] = detected_meta_service
                     session["awaiting_service"] = False
                 else:
                     session[key] = metadata[key]
@@ -889,14 +921,6 @@ async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: st
                     exam = exam_res.scalars().first()
                     if exam:
                         service_name = exam.name
-                else:
-                    exams_res = await db.execute(select(ExamWeb))
-                    exams = exams_res.scalars().all()
-                    for exam in exams:
-                        if _service_matches_text(service_name, exam.name):
-                            exam_id = exam.id
-                            service_name = exam.name
-                            break
 
                 # Resolve slot_id e slot_date a partir dos metadados capturados
                 slot_id = None

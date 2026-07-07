@@ -192,7 +192,7 @@
                 e.stopPropagation(); // Evita selecionar o card
                 const checked = iaCheckbox.checked;
                 try {
-                    const response = await fetch(`${API_BASE}/api/sessions/${client.phone}/toggle-ai`, {
+                    const response = await fetch(`${API_BASE}/api/sessions/${encodeURIComponent(client.phone)}/toggle-ai`, {
                         method: "PUT"
                     });
                     if (response.ok) {
@@ -495,7 +495,7 @@
             };
             
             try {
-                const token = localStorage.getItem("token");
+                const token = localStorage.getItem("access_token");
                 const response = await fetch(`${API_BASE}/api/clients/${clientId}`, {
                     method: "PUT",
                     headers: {
