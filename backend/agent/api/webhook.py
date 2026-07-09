@@ -1,17 +1,519 @@
 from fastapi import APIRouter, Request, BackgroundTasks
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
+from sqlalchemy.orm import selectinload
 from backend.agent.services import session as sess
 from backend.agent.services import ai_service, faq_service, whatsapp
 from backend.agent.services import schedule_service
 from backend.system.config import settings
 from backend.system.logger import logger
 from backend.system.database import AsyncSession
-from backend.system.models.web_models import ClientWeb, ExamWeb
+from backend.system.models.web_models import ClientWeb, ExamWeb, ScheduleSlotWeb
 import os
 import asyncio
+import unicodedata
+import re
 from datetime import date
 
 router = APIRouter(prefix="/webhook")
+
+INITIAL_GREETING = (
+    "Olá! 👋✨\n"
+    "Seja bem-vindo(a) à Lumina Clínica Odontológica 🦷✨\n\n"
+    "Será um prazer cuidar do seu sorriso!\n\n"
+    "Como podemos te ajudar hoje?"
+)
+
+SERVICES_PDF_INTRO = "Vou te enviar nossa tabela com os procedimentos que realizamos e seus respectivos valores. 📋✨"
+
+LOCATION_MESSAGE = (
+    "📍 Segue a localização da nossa clínica:\n\n"
+    "https://maps.app.goo.gl/fqcbXNXctnfnT7Rn6?g_st=ic\n\n"
+    "Será um prazer receber você! 🦷✨"
+)
+
+SERVICES_PDF_KEYWORDS = [
+    "valor", "valores", "preço", "precos", "preço", "preços", "quanto custa",
+    "custa quanto", "orçamento", "orcamento", "tabela", "procedimento",
+    "procedimentos", "serviço", "servicos", "serviço", "serviços", "exame",
+    "exames", "catálogo", "catalogo", "pdf"
+]
+
+PRICE_KEYWORDS = [
+    "valor", "valores", "preco", "precos", "preço", "preços", "quanto custa",
+    "custa quanto", "orçamento", "orcamento", "qual o preço", "qual valor",
+]
+
+PDF_ONLY_KEYWORDS = [
+    "tabela", "catálogo", "catalogo", "pdf", "lista de preços", "lista de precos",
+    "todos os procedimentos", "procedimentos e valores", "serviços e valores",
+    "servicos e valores",
+]
+
+LOCATION_KEYWORDS = [
+    "endereço", "endereco", "localização", "localizacao", "localizaçao",
+    "onde fica", "mapa", "maps", "rota", "chegar", "como chegar",
+    "local", "fica onde"
+]
+
+APPOINTMENT_INTENT_KEYWORDS = [
+    "consulta", "consultar", "agendar", "agendamento", "marcar", "horario",
+    "horário", "atendimento", "avaliacao", "avaliação"
+]
+
+GENERIC_SERVICE_NAMES = {
+    "consulta", "consulta odontologica", "consulta odontológica", "avaliacao",
+    "avaliação", "atendimento", "atendimento humano", "em andamento",
+    "em andamento...", "procedimento", "servico", "serviço", "exame",
+    "aguardando procedimento"
+}
+
+EVALUATION_SERVICE_NAME = "Avaliacao gratuita"
+
+EVALUATION_KEYWORDS = [
+    "avaliacao", "avalia", "avaliar", "tratamento urgente", "urgente"
+]
+
+SERVICE_MATCH_STOPWORDS = {
+    "consulta", "consultar", "agendamento", "agendar", "atendimento",
+    "avaliacao", "avaliacao", "procedimento", "procedimentos", "servico",
+    "servicos", "exame", "exames", "gostaria", "queria", "quero", "marcar"
+}
+
+ACKNOWLEDGEMENT_WORDS = {
+    "ok", "okay", "certo", "beleza", "blz", "ta", "tá", "sim", "pode",
+    "entendi", "combinado", "perfeito"
+}
+
+CONFIRMATION_WORDS = {
+    "sim", "pode", "confirmar", "confirmo", "quero", "isso", "esse",
+    "essa", "ok", "certo", "fechado", "perfeito"
+}
+
+REJECTION_WORDS = {"nao", "não", "outro", "trocar", "mudar", "prefiro"}
+
+
+def _contains_any(text_lower: str, keywords: list[str]) -> bool:
+    return any(keyword in text_lower for keyword in keywords)
+
+
+def _wants_services_pdf(text: str) -> bool:
+    return _contains_any(text.lower(), SERVICES_PDF_KEYWORDS)
+
+
+def _wants_price(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return any(_normalize_label(keyword) in normalized for keyword in PRICE_KEYWORDS)
+
+
+def _wants_pdf_only(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return any(_normalize_label(keyword) in normalized for keyword in PDF_ONLY_KEYWORDS)
+
+
+def _wants_location(text: str) -> bool:
+    return _contains_any(text.lower(), LOCATION_KEYWORDS)
+
+
+def _normalize_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = unicodedata.normalize("NFD", str(value).strip().lower())
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = " ".join(text.replace(".", " ").replace("-", " ").split())
+    return text
+
+
+def _is_generic_service(value: str | None) -> bool:
+    normalized = _normalize_label(value)
+    if normalized == _normalize_label(EVALUATION_SERVICE_NAME):
+        return False
+    return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
+
+
+def _is_acknowledgement(text: str) -> bool:
+    normalized = _normalize_label(text)
+    return normalized in {_normalize_label(item) for item in ACKNOWLEDGEMENT_WORDS}
+
+
+def _is_confirmation_text(text: str) -> bool:
+    normalized = _normalize_label(text)
+    words = set(normalized.split())
+    return bool(words & {_normalize_label(item) for item in CONFIRMATION_WORDS})
+
+
+def _is_rejection_text(text: str) -> bool:
+    normalized = _normalize_label(text)
+    words = set(normalized.split())
+    return bool(words & {_normalize_label(item) for item in REJECTION_WORDS})
+
+
+def _strip_premature_upsell(text: str) -> str:
+    if not text:
+        return text
+    parts = re.split(r"\n?\s*(?:al[eé]m disso|aproveitando)[,\s]+", text, flags=re.IGNORECASE, maxsplit=1)
+    return parts[0].rstrip() if parts else text
+
+
+def _has_real_service(session: dict) -> bool:
+    return bool(session.get("service")) and not _is_generic_service(session.get("service"))
+
+
+def _wants_appointment_without_service(text: str, session: dict) -> bool:
+    text_lower = text.lower()
+    if _has_real_service(session):
+        return False
+    return _contains_any(text_lower, APPOINTMENT_INTENT_KEYWORDS)
+
+
+async def _ask_for_service_before_scheduling(phone: str, reply_jid: str, session: dict) -> dict:
+    session["service"] = None
+    session["appointment_date"] = None
+    session["slot_date"] = None
+    session["slot_time"] = None
+    session["awaiting_service"] = True
+    session["appointment_request_sent"] = False
+    if not session.get("services_pdf_sent"):
+        session = await _send_services_pdf(phone, reply_jid, session)
+    message = (
+        "Antes de marcar o horário, preciso saber qual procedimento você deseja realizar. "
+        "Pode escolher um da tabela ou escrever outro procedimento, se não estiver na lista. "
+        "Ah, e nossa avaliação é gratuita. 😊"
+    )
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    return await sess.add_to_history(session, "assistant", message)
+
+
+def _valid_cpf(value: str | None) -> bool:
+    if not value:
+        return False
+    digits = "".join(ch for ch in str(value) if ch.isdigit())
+    return len(digits) >= 11 and digits != "00000000000"
+
+
+def _client_lookup_filter(phone: str, cpf: str | None = None):
+    filters = [ClientWeb.phone == phone]
+    if _valid_cpf(cpf):
+        filters.append(ClientWeb.cpf == str(cpf)[:14])
+    return or_(*filters)
+
+
+def _service_matches_text(text: str, service_name: str) -> bool:
+    text_norm = _normalize_label(text)
+    service_norm = _normalize_label(service_name)
+    if not text_norm or not service_norm:
+        return False
+    if text_norm not in SERVICE_MATCH_STOPWORDS and (text_norm in service_norm or service_norm in text_norm):
+        return True
+    stopwords = {_normalize_label(item) for item in SERVICE_MATCH_STOPWORDS}
+    text_words = {word for word in text_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5 and word not in stopwords}
+    service_words = {word for word in service_norm.replace("(", " ").replace(")", " ").split() if len(word) >= 5 and word not in stopwords}
+    return bool(text_words & service_words)
+
+
+def _wants_evaluation_service(text: str) -> bool:
+    normalized = _normalize_label(text)
+    if not normalized:
+        return False
+    return any(_normalize_label(keyword) in normalized for keyword in EVALUATION_KEYWORDS)
+
+
+async def _detect_service_from_text(text: str, allow_custom: bool = False) -> tuple[str | None, int | None]:
+    if _is_generic_service(text):
+        if _wants_evaluation_service(text):
+            return EVALUATION_SERVICE_NAME, None
+        return None, None
+
+    async with AsyncSession() as db:
+        result = await db.execute(select(ExamWeb))
+        exams = result.scalars().all()
+
+    for exam in exams:
+        if _service_matches_text(text, exam.name):
+            return exam.name, exam.id
+
+    if _wants_evaluation_service(text):
+        return EVALUATION_SERVICE_NAME, None
+
+    text_norm = _normalize_label(text)
+    custom_prefixes = ("outro", "outros", "nao esta na lista", "não está na lista", "nao tem na lista", "não tem na lista")
+    if allow_custom and text_norm and not _is_acknowledgement(text) and text_norm.startswith(custom_prefixes) and not schedule_service.parse_appointment_text(text)[0]:
+        custom = str(text).replace(":", " ", 1).strip()
+        return custom.title(), None
+    return None, None
+
+
+async def _send_services_pdf(phone: str, reply_jid: str, session: dict) -> dict:
+    await whatsapp.send_message(phone, SERVICES_PDF_INTRO, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "assistant", SERVICES_PDF_INTRO)
+
+    pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
+    if not os.path.exists(pdf_path):
+        logger.warning(f"PDF de serviços não encontrado em {pdf_path}")
+        return session
+
+    base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
+    if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
+        base_url = "http://backend:8000"
+
+    pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
+    logger.info(f"Enviando PDF de serviços para {phone[:6]}*** via {pdf_url}")
+    await whatsapp.send_document(
+        phone=phone,
+        pdf_url=pdf_url,
+        filename=settings.SERVICES_PDF_FILENAME,
+        caption="",
+        reply_jid=reply_jid
+    )
+    session["services_pdf_sent"] = True
+    return await sess.add_to_history(
+        session,
+        "assistant",
+        f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n{SERVICES_PDF_INTRO}"
+    )
+
+
+def _format_brl(value: float | int | None) -> str:
+    if value is None:
+        return "valor sob avaliação"
+    return f"R$ {float(value):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+async def _handle_price_question(phone: str, text: str, session: dict, reply_jid: str) -> bool:
+    detected_service, detected_exam_id = await _detect_service_from_text(text, allow_custom=False)
+    if not detected_service:
+        message = (
+            "Claro. Sobre qual procedimento você gostaria de saber o valor? "
+            "Pode me mandar o nome, por exemplo: raspagem, clareamento ou restauração. 😊"
+        )
+        await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+        session = await sess.add_to_history(session, "user", text)
+        session = await sess.add_to_history(session, "assistant", message)
+        await sess.save_session(phone, session)
+        return True
+
+    exam = None
+    async with AsyncSession() as db:
+        if detected_exam_id:
+            res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(detected_exam_id)))
+            exam = res.scalars().first()
+        if not exam:
+            res = await db.execute(select(ExamWeb))
+            for candidate in res.scalars().all():
+                if _service_matches_text(detected_service, candidate.name):
+                    exam = candidate
+                    break
+
+    if not exam:
+        message = (
+            f"Consigo te ajudar com {detected_service}, mas o valor exato precisa ser conferido pela recepção. "
+            "Se quiser, posso seguir com uma solicitação de agendamento. 😊"
+        )
+    else:
+        session["service"] = exam.name
+        session["exam_id"] = exam.id
+        session["awaiting_service"] = False
+        message = (
+            f"{exam.name} fica a partir de {_format_brl(exam.price)}. "
+            "O valor final pode variar conforme a avaliação clínica. Nossa avaliação é gratuita. 😊"
+        )
+
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "user", text)
+    session = await sess.add_to_history(session, "assistant", message)
+    await sess.save_session(phone, session)
+    return True
+
+
+def _format_client_appointment(client: ClientWeb) -> str:
+    if client.slot_date and client.slot:
+        return f"{client.slot_date.strftime('%d/%m/%Y')} às {client.slot.time_str}"
+    return client.appointment_date or "sem horário definido"
+
+
+async def _available_slots_message(days_ahead: int = 14) -> str:
+    slots = await schedule_service.get_available_slots(days_ahead=days_ahead)
+    if not slots:
+        return "No momento não encontrei horários livres nos próximos dias. Vou pedir para a recepção conferir uma opção para você. 😊"
+    preview = slots[:8]
+    lines = ["Tenho estes horários disponíveis:"]
+    for slot in preview:
+        lines.append(f"• {slot['day_name']} {slot['date_str']} às {slot['time_str']}")
+    lines.append("Pode me responder com uma dessas opções, por exemplo: 15/06 às 10:00.")
+    return "\n".join(lines)
+
+
+def _appointment_confirmation_message(session: dict) -> str:
+    service = session.get("service") or "procedimento escolhido"
+    slot_date = date.fromisoformat(str(session["slot_date"]))
+    slot_time = session["slot_time"]
+    return (
+        "Perfeito! Antes de enviar para a recepção, confirme por favor:\n\n"
+        f"🦷 Procedimento: {service}\n"
+        f"📅 Data/Hora: {slot_date.strftime('%d/%m/%Y')} às {slot_time}\n\n"
+        "Posso enviar essa solicitação de agendamento para a equipe confirmar?"
+    )
+
+
+async def _handle_requested_slot(phone: str, text: str, session: dict, reply_jid: str) -> bool:
+    if not (session.get("name") and session.get("cpf") and _has_real_service(session)):
+        return False
+
+    requested_date, requested_time = schedule_service.parse_appointment_text(text)
+    if requested_time and not requested_date:
+        base_date = session.get("pending_slot_date") or session.get("slot_date")
+        if not base_date and session.get("appointment_date"):
+            parsed_existing_date, _ = schedule_service.parse_appointment_text(session.get("appointment_date"))
+            if parsed_existing_date:
+                base_date = parsed_existing_date.isoformat()
+        if base_date:
+            requested_date = date.fromisoformat(str(base_date))
+
+    if not (requested_date and requested_time):
+        return False
+
+    slot = await schedule_service.find_slot_by_date_time(requested_date.isoformat(), requested_time)
+    if not slot:
+        session["appointment_date"] = None
+        session["slot_date"] = None
+        session["slot_time"] = None
+        session["pending_slot_date"] = requested_date.isoformat()
+        session["awaiting_slot_confirmation"] = False
+        message = (
+            f"Esse horário ({requested_date.strftime('%d/%m/%Y')} às {requested_time}) não está disponível na agenda.\n\n"
+            f"{schedule_service.business_hours_message()}\n\n"
+            f"{await _available_slots_message()}"
+        )
+        await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+        session = await sess.add_to_history(session, "user", text)
+        session = await sess.add_to_history(session, "assistant", message)
+        await sess.save_session(phone, session)
+        return True
+
+    session["appointment_date"] = f"{requested_date.strftime('%d/%m/%Y')} às {requested_time}"
+    session["slot_date"] = requested_date.isoformat()
+    session["slot_time"] = requested_time
+    session["pending_slot_date"] = requested_date.isoformat()
+    session["awaiting_slot_confirmation"] = True
+    session["appointment_request_sent"] = False
+    session["confirmed_service"] = session["service"]
+    if session.get("exam_id"):
+        session["confirmed_exam_id"] = session["exam_id"]
+    message = _appointment_confirmation_message(session)
+    await whatsapp.send_message(phone, message, reply_jid=reply_jid)
+    session = await sess.add_to_history(session, "user", text)
+    session = await sess.add_to_history(session, "assistant", message)
+    await sess.save_session(phone, session)
+    return True
+
+
+async def _slot_has_capacity(db: AsyncSession, slot_id: int, slot_date: date, current_client_id: int | None = None) -> bool:
+    slot_res = await db.execute(select(ScheduleSlotWeb).where(ScheduleSlotWeb.id == slot_id))
+    slot = slot_res.scalars().first()
+    if not slot or not slot.is_active:
+        return False
+    count_query = select(func.count(ClientWeb.id)).where(
+        ClientWeb.slot_id == slot_id,
+        ClientWeb.slot_date == slot_date,
+        ClientWeb.status.in_(["pending", "confirmed"])
+    )
+    if current_client_id:
+        count_query = count_query.where(ClientWeb.id != current_client_id)
+    booked_res = await db.execute(count_query)
+    return (booked_res.scalar() or 0) < slot.max_patients
+
+
+async def _handle_appointment_self_service(phone: str, text: str, session: dict, phone_for_reply: str) -> bool:
+    text_lower = text.lower().strip()
+    lookup_keywords = ["histórico", "historico", "minha marcação", "minha marcacao", "meu agendamento", "minha consulta", "verificar acesso", "ver minha agenda", "meu horário", "meu horario"]
+    reschedule_keywords = ["remarcar", "mudar horário", "mudar horario", "trocar horário", "trocar horario", "alterar horário", "alterar horario", "mudar minha consulta", "trocar minha consulta"]
+    wants_lookup = any(keyword in text_lower for keyword in lookup_keywords)
+    wants_reschedule = any(keyword in text_lower for keyword in reschedule_keywords)
+    awaiting_reschedule = bool(session.get("awaiting_reschedule"))
+
+    parsed_date, parsed_time = schedule_service.parse_appointment_text(text)
+    if not (wants_lookup or wants_reschedule or awaiting_reschedule):
+        return False
+
+    async with AsyncSession() as db:
+        result = await db.execute(
+            select(ClientWeb)
+            .options(selectinload(ClientWeb.slot))
+            .where(ClientWeb.phone == phone)
+            .order_by(ClientWeb.id.desc())
+        )
+        client = result.scalars().first()
+
+        if not client:
+            message = (
+                "Ainda não encontrei um agendamento vinculado ao seu WhatsApp. "
+                "Me envie seu nome completo, CPF e o serviço desejado para eu iniciar seu cadastro. 😊"
+            )
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            return True
+
+        if (wants_reschedule or awaiting_reschedule) and parsed_date and parsed_time:
+            slot = await schedule_service.find_slot_by_date_time(parsed_date.isoformat(), parsed_time)
+            if not slot:
+                message = (
+                    f"Encontrei a data {parsed_date.strftime('%d/%m/%Y')} às {parsed_time}, "
+                    "mas esse horário não está cadastrado na agenda da clínica.\n\n"
+                    f"{await _available_slots_message()}"
+                )
+                session["awaiting_reschedule"] = True
+                await sess.save_session(phone, session)
+                await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+                return True
+
+            if not await _slot_has_capacity(db, slot.id, parsed_date, client.id):
+                message = (
+                    f"Esse horário ({parsed_date.strftime('%d/%m/%Y')} às {parsed_time}) já está preenchido.\n\n"
+                    f"{await _available_slots_message()}"
+                )
+                session["awaiting_reschedule"] = True
+                await sess.save_session(phone, session)
+                await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+                return True
+
+            client.slot_id = slot.id
+            client.slot_date = parsed_date
+            client.appointment_date = f"{parsed_date.strftime('%d/%m/%Y')} às {parsed_time}"
+            client.status = "pending"
+            client.needs_human = False
+            await db.commit()
+
+            session["appointment_date"] = client.appointment_date
+            session["slot_date"] = parsed_date.isoformat()
+            session["slot_time"] = parsed_time
+            session["awaiting_reschedule"] = False
+            await sess.save_session(phone, session)
+
+            message = (
+                f"Perfeito! Atualizei sua solicitação para {client.appointment_date}. "
+                "Ela voltou para a recepção aprovar e te confirmar por aqui. 😊"
+            )
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            return True
+
+        appointment = _format_client_appointment(client)
+        status_map = {
+            "pending": "pendente de aprovação",
+            "confirmed": "confirmado",
+            "cancelled": "recusado/cancelado",
+        }
+        status_text = status_map.get(client.status, client.status or "pendente")
+        message = (
+            f"Encontrei seu agendamento de {client.service}: {appointment}.\n"
+            f"Status: {status_text}."
+        )
+        if wants_reschedule:
+            session["awaiting_reschedule"] = True
+            await sess.save_session(phone, session)
+            message += f"\n\n{await _available_slots_message()}"
+        else:
+            message += "\n\nSe quiser remarcar, me diga: quero mudar horário."
+
+        await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+        return True
 
 
 @router.post("/message")
@@ -20,29 +522,44 @@ async def receive_message(request: Request, bg: BackgroundTasks):
     phone = body.get("phone", "")
     phone_for_reply = body.get("phone_for_reply", "") or phone  # JID completo para resposta (@lid ou @s.whatsapp.net)
     text = body.get("message", "").strip()
-    profile_pic = body.get("profile_pic", None)
     push_name = body.get("push_name", "")
 
-    if not phone or not text:
+    media = body.get("media", None)
+
+    if not phone or (not text and not media):
         return {"status": "ignored"}
 
-    bg.add_task(handle, phone, text, profile_pic, push_name, phone_for_reply)
+    bg.add_task(handle, phone, text, push_name, phone_for_reply, media)
     return {"status": "ok"}
 
 
-async def handle(phone: str, text: str, profile_pic: str = None, push_name: str = "", phone_for_reply: str = None):
+async def handle(phone: str, text: str, push_name: str = "", phone_for_reply: str = None, media: dict = None):
     # phone_for_reply: JID completo para enviar respostas (pode ser @lid ou @s.whatsapp.net)
     # phone: número limpo sem sufixo, usado como chave de sessão e no banco de dados
     if not phone_for_reply:
         phone_for_reply = phone
-    logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | '{text[:50]}'")
+    logger.info(f"Mensagem de {phone[:6]}*** | reply_jid={phone_for_reply} | media={'sim' if media else 'nao'} | '{text[:50]}'")
     session = await sess.get_session(phone)
-    if profile_pic:
-        session["profile_pic"] = profile_pic
     if push_name and not session.get("name"):
         session["name"] = push_name
     # Salva o JID de resposta na sessão para envios futuros
     session["phone_for_reply"] = phone_for_reply
+
+    # 0. Processamento inicial de mídia (Áudio)
+    if media and media["type"] == "audio":
+        try:
+            transcribed_text = await ai_service.transcribe_audio(media["data"], media["mimetype"])
+            if transcribed_text:
+                text = f"[Áudio Transcrito do Paciente]: {transcribed_text}"
+            else:
+                text = "[Paciente enviou um áudio vazio ou ininteligível.]"
+        except Exception as e:
+            logger.error(f"Erro na transcrição de áudio: {e}")
+            text = "[Paciente enviou um arquivo de áudio que eu não consigo ler. Peça educadamente para ele escrever em texto.]"
+        media = None # Após transcrever, tratamos como texto normal
+    
+    if not text and media and media["type"] == "image":
+        text = "[Paciente enviou uma imagem]"
 
     # 1. Verifica PRIORIDADE MÁXIMA: Gatilho de suporte humano por palavras-chave
     keywords_human = ["humano", "atendente", "recepcionista", "falar com alguem", "falar com alguém", "pessoa", "suporte", "falar com um", "atendimento humano"]
@@ -67,26 +584,21 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
             "upsell_success": False,
             "upsell_service": None,
             "source": "whatsapp",
-            "profile_pic": profile_pic or None,
             "phone_for_reply": phone_for_reply,
         }
         await sess.save_session(phone, new_session)
-        reset_msg = "Tudo bem! 😊 Vou começar um novo atendimento para você. Acabei de enviar novamente o nosso catálogo logo abaixo. Qual serviço chamou sua atenção?"
-        await whatsapp.send_message(phone, reset_msg, reply_jid=phone_for_reply)
-        # Reenvia o PDF
-        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
-        if os.path.exists(pdf_path):
-            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
-            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
-                base_url = "http://backend:8000"
-            pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
-            await whatsapp.send_document(phone=phone, pdf_url=pdf_url, filename=settings.SERVICES_PDF_FILENAME, caption="📄 Segue nossa tabela completa de serviços e valores!", reply_jid=phone_for_reply)
+        await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
+        new_session = await sess.add_to_history(new_session, "assistant", INITIAL_GREETING)
+        await sess.save_session(phone, new_session)
         logger.info(f"Sessão reiniciada por comando do usuário: {phone[:6]}***")
-        
-        # Deleta do painel se o serviço ainda for Atendimento Humano ou nulo (resetando o paciente)
+
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 client_record = result.scalars().first()
                 if client_record and client_record.status == "pending" and (not client_record.service or client_record.service == "Atendimento Humano"):
@@ -95,8 +607,19 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                     logger.info(f"Cliente {phone} removido do painel (zera/reiniciar).")
             except Exception as e:
                 logger.error(f"Erro ao remover cliente do painel no reset: {e}")
-                
+
         return
+
+    if session.get("escalated"):
+        async with AsyncSession() as db:
+            result = await db.execute(select(ClientWeb).where(ClientWeb.phone == phone))
+            client_record = result.scalars().first()
+            if not client_record or not client_record.needs_human:
+                logger.info(f"Sessão escalada antiga liberada para IA: {phone[:6]}***")
+                session["escalated"] = False
+                session["needs_human"] = False
+                session["ai_attempts"] = 0
+                await sess.save_session(phone, session)
 
     if session["escalated"]:
         # Se o usuário manda mensagem com reset enquanto escalado, deixa o reset funcionar normalmente (já tratado acima).
@@ -120,6 +643,78 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         logger.info(f"Origem do cliente detectada como INSTAGRAM via mensagem inicial!")
         session["source"] = "instagram"
 
+    skip_ai_response = False
+    if session.get("awaiting_slot_confirmation"):
+        if _is_rejection_text(text):
+            session["appointment_date"] = None
+            session["slot_date"] = None
+            session["slot_time"] = None
+            session["appointment_request_sent"] = False
+            session["awaiting_slot_confirmation"] = False
+            message = "Sem problemas. Me diga outro dia e horário que você prefere para eu verificar na agenda. 😊"
+            await whatsapp.send_message(phone, message, reply_jid=phone_for_reply)
+            session = await sess.add_to_history(session, "user", censored_text)
+            session = await sess.add_to_history(session, "assistant", message)
+            await sess.save_session(phone, session)
+            return
+        if _is_confirmation_text(text):
+            session["awaiting_slot_confirmation"] = False
+            if session.get("confirmed_service"):
+                session["service"] = session["confirmed_service"]
+            if session.get("confirmed_exam_id"):
+                session["exam_id"] = session["confirmed_exam_id"]
+            skip_ai_response = True
+
+    if await _handle_appointment_self_service(phone, text, session, phone_for_reply):
+        return
+
+    if _wants_location(text):
+        await whatsapp.send_message(phone, LOCATION_MESSAGE, reply_jid=phone_for_reply)
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await sess.add_to_history(session, "assistant", LOCATION_MESSAGE)
+        await sess.save_session(phone, session)
+        return
+
+    if _wants_pdf_only(text):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _send_services_pdf(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
+
+    if _wants_price(text):
+        if await _handle_price_question(phone, censored_text, session, phone_for_reply):
+            return
+
+    detected_service, detected_exam_id = await _detect_service_from_text(
+        text,
+        allow_custom=bool(session.get("awaiting_service"))
+    )
+    if detected_service:
+        session["service"] = detected_service
+        session["awaiting_service"] = False
+        session["exam_id"] = detected_exam_id
+    elif session.get("awaiting_service"):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
+
+    if _wants_appointment_without_service(text, session):
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
+
+    if await _handle_requested_slot(phone, text, session, phone_for_reply):
+        return
+
+    if is_first_message and not user_requested_human:
+        await whatsapp.send_message(phone, INITIAL_GREETING, reply_jid=phone_for_reply)
+        session = await sess.add_to_history(session, "user", censored_text)
+        session = await sess.add_to_history(session, "assistant", INITIAL_GREETING)
+        await sess.save_session(phone, session)
+        return
+
     # 1. tenta FAQ usando o texto censurado
     answer, score = faq_service.search_faq(censored_text)
     if answer and score >= 0.6:
@@ -139,10 +734,19 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
     response = ""
 
     # Se NÃO disparou o gatilho de humano ainda, consulta a IA
-    if not needs_human_trigger:
+    if not needs_human_trigger and not skip_ai_response:
         # 2. consulta IA usando o texto censurado
         context = faq_service.get_context(censored_text)
-        response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context)
+        try:
+            response, confidence, metadata = await ai_service.get_response(censored_text, session["history"], context, media=media)
+        except Exception as e:
+            logger.error(f"Erro ao consultar IA para {phone[:6]}***: {e}")
+            response = (
+                "Tive uma instabilidade para consultar as informações agora. "
+                "Vou chamar nossa equipe para te ajudar por aqui. 🧡"
+            )
+            confidence = 1.0
+            metadata = {"needs_human": True}
         
         # Atualiza o gatilho caso a IA tenha decidido transferir
         if metadata and metadata.get("needs_human") is True:
@@ -182,14 +786,61 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         for key in ["name", "cpf", "service", "appointment_date", "slot_date", "slot_time", "upsell_success", "upsell_service", "needs_human"]:
             if metadata.get(key) is not None and metadata.get(key) != "" and metadata.get(key) != "null":
                 if key == "cpf":
+                    # Se já temos um CPF válido (>= 11 chars e sem asteriscos), não deixa a IA sobrescrever com alucinação
+                    if session.get("cpf") and len(str(session["cpf"])) >= 11 and "*" not in str(session["cpf"]):
+                        continue
                     if "*" in str(metadata[key]):
                         continue
                     session[key] = str(metadata[key])[:14]
+                elif key == "service":
+                    if session.get("confirmed_service"):
+                        continue
+                    if _is_generic_service(metadata[key]):
+                        continue
+                    detected_meta_service, detected_meta_exam_id = await _detect_service_from_text(str(metadata[key]), allow_custom=False)
+                    if not detected_meta_service:
+                        continue
+                    if not (
+                        _service_matches_text(text, detected_meta_service)
+                        or _wants_evaluation_service(text)
+                        or session.get("awaiting_service")
+                    ):
+                        logger.warning(
+                            f"Ignorando servico inferido pela IA sem confirmacao textual: {metadata[key]!r}"
+                        )
+                        continue
+                    session["exam_id"] = detected_meta_exam_id
+                    session[key] = detected_meta_service
+                    session["awaiting_service"] = False
                 else:
                     session[key] = metadata[key]
 
+    if _is_generic_service(session.get("service")):
+        session["service"] = None
+
+    direct_date, direct_time = schedule_service.parse_appointment_text(text)
+    if direct_date and direct_time and not session.get("appointment_date"):
+        session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+        if not _is_confirmation_text(text):
+            session["awaiting_slot_confirmation"] = True
+
+    if session.get("appointment_date") and (not session.get("slot_date") or not session.get("slot_time")):
+        if not direct_date or not direct_time:
+            direct_date, direct_time = schedule_service.parse_appointment_text(session.get("appointment_date"))
+        if direct_date and direct_time:
+            session["slot_date"] = direct_date.isoformat()
+            session["slot_time"] = direct_time
+            session["appointment_date"] = f"{direct_date.strftime('%d/%m/%Y')} às {direct_time}"
+            if text.strip() and not _is_confirmation_text(text) and schedule_service.parse_appointment_text(text)[0]:
+                session["awaiting_slot_confirmation"] = True
+
     # Adicionar mensagem do usuário à história da sessão
     session = await sess.add_to_history(session, "user", censored_text)
+
+    if session.get("appointment_date") and not _has_real_service(session):
+        session = await _ask_for_service_before_scheduling(phone, phone_for_reply, session)
+        await sess.save_session(phone, session)
+        return
 
     if needs_human_trigger:
         await whatsapp.send_escalation(phone, reply_jid=session.get("phone_for_reply"))
@@ -199,7 +850,11 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         # Salva ou atualiza ClientWeb no banco de dados com needs_human=True
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 client_record = result.scalars().first()
                 
@@ -210,7 +865,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service="Atendimento Humano",
-                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={phone}",
                         appointment_date=None,
                         upsell_success=False,
                         upsell_service=None,
@@ -228,9 +882,11 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         # Salva a sessão no Redis antes de retornar, para garantir que 'escalated=True' persista
         await sess.save_session(phone, session)
         return
-    else:
+    elif not skip_ai_response:
         # Enviar resposta da IA
         sent_response = response
+        if session.get("awaiting_slot_confirmation"):
+            sent_response = _strip_premature_upsell(sent_response)
         if confidence < settings.AI_CONFIDENCE_THRESHOLD:
             sent_response += "\n\n_Caso queira falar com um atendente, é só pedir!_"
             
@@ -240,51 +896,31 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
         # Audita a resposta em background sem bloquear o usuário
         asyncio.create_task(ai_service.audit_response_in_background(text, sent_response))
 
-        # Envia o PDF de serviços na primeira mensagem do paciente
-        pdf_path = os.path.join("backend", "agent", "docs", settings.SERVICES_PDF_FILENAME)
-        if is_first_message and os.path.exists(pdf_path):
-            # Resolve o problema do docker-compose injetar localhost
-            base_url = os.getenv("BACKEND_PUBLIC_URL", "http://localhost:8000")
-            if "localhost" in base_url and "baileys:3000" in settings.WHATSAPP_API_URL:
-                base_url = "http://backend:8000"
-                
-            pdf_url = f"{base_url}/docs-files/{settings.SERVICES_PDF_FILENAME}"
-            logger.info(f"Enviando PDF de serviços para {phone[:6]}*** via {pdf_url}")
-            await whatsapp.send_document(
-                phone=phone,
-                pdf_url=pdf_url,
-                filename=settings.SERVICES_PDF_FILENAME,
-                caption="📄 Segue nossa tabela completa de serviços e valores!",
-                reply_jid=session.get("phone_for_reply")
-            )
-            session = await sess.add_to_history(
-                session, 
-                "assistant", 
-                f"[📎 Documento Anexado: {settings.SERVICES_PDF_FILENAME}]\n📄 Segue nossa tabela completa de serviços e valores!"
-            )
-
     # 3. Registro Automático se os dados essenciais estiverem preenchidos (CPF é opcional)
     has_name = bool(session.get("name"))
-    has_service = bool(session.get("service"))
-    has_date = bool(session.get("appointment_date"))
+    has_service = _has_real_service(session)
+    has_date = bool(session.get("appointment_date")) and not session.get("awaiting_slot_confirmation")
+    request_already_sent = bool(session.get("appointment_request_sent"))
     logger.info(f"[REGISTRO] name={session.get('name')!r} service={session.get('service')!r} date={session.get('appointment_date')!r} cpf={'****' if session.get('cpf') else None}")
-    if has_name and has_service and has_date:
+    if has_name and has_service and has_date and not request_already_sent:
         async with AsyncSession() as db:
             try:
-                stmt = select(ClientWeb).where(ClientWeb.phone == phone)
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
                 result = await db.execute(stmt)
                 existing = result.scalars().first()
 
                 # Resolve exam_id
-                exam_id = None
-                service_name = session["service"]
-                exams_res = await db.execute(select(ExamWeb))
-                exams = exams_res.scalars().all()
-                for exam in exams:
-                    if (service_name.lower() in exam.name.lower()) or (exam.name.lower() in service_name.lower()):
-                        exam_id = exam.id
+                exam_id = session.get("confirmed_exam_id") or session.get("exam_id")
+                service_name = session.get("confirmed_service") or session["service"]
+                if exam_id:
+                    exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(exam_id)))
+                    exam = exam_res.scalars().first()
+                    if exam:
                         service_name = exam.name
-                        break
 
                 # Resolve slot_id e slot_date a partir dos metadados capturados
                 slot_id = None
@@ -324,7 +960,6 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                         phone=phone,
                         source=session.get("source", "whatsapp"),
                         service=service_name,
-                        profile_pic=session.get("profile_pic") or f"https://api.dicebear.com/7.x/adventurer/svg?seed={session.get('name', phone)}",
                         appointment_date=session["appointment_date"],
                         slot_id=slot_id,
                         slot_date=slot_date_obj,
@@ -341,8 +976,8 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                     logger.info(f"Atualizando agendamento para {phone}...")
                     existing.name = session["name"]
                     existing.cpf = str(session.get("cpf") or existing.cpf or "000.000.000-00")[:14]
+                    existing.phone = phone
                     existing.service = service_name
-                    existing.profile_pic = session.get("profile_pic") or existing.profile_pic
                     existing.appointment_date = session["appointment_date"]
                     existing.slot_id = slot_id
                     existing.slot_date = slot_date_obj
@@ -374,10 +1009,60 @@ async def handle(phone: str, text: str, profile_pic: str = None, push_name: str 
                 
                 await whatsapp.send_message(phone, confirm_msg, reply_jid=session.get("phone_for_reply"))
                 session = await sess.add_to_history(session, "assistant", confirm_msg)
+                session["appointment_request_sent"] = True
 
                 # O dashboard já sinaliza pacientes que precisam de atendimento humano (is_busy_day).
                 # Não é necessário enviar notificação via WhatsApp para o próprio número da clínica.
             except Exception as e:
                 logger.error(f"Erro ao salvar agendamento automático: {e}")
+
+    # Atualiza incrementalmente o banco de dados com Nome e CPF se o cliente já existir,
+    # ou cria um rascunho se tiver nome e CPF mas ainda não terminou o fluxo
+    if session.get("name") or session.get("cpf"):
+        async with AsyncSession() as db:
+            try:
+                stmt = (
+                    select(ClientWeb)
+                    .where(_client_lookup_filter(phone, session.get("cpf")))
+                    .order_by(ClientWeb.id.desc())
+                )
+                result = await db.execute(stmt)
+                existing = result.scalars().first()
+                if existing:
+                    existing.phone = phone
+                    if session.get("name"):
+                        existing.name = session["name"]
+                    if session.get("cpf"):
+                        existing.cpf = str(session["cpf"])[:14]
+                    if _has_real_service(session):
+                        session_exam_id = session.get("confirmed_exam_id") or session.get("exam_id")
+                        if session_exam_id:
+                            exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == int(session_exam_id)))
+                            exam = exam_res.scalars().first()
+                            if exam:
+                                existing.service = exam.name
+                                existing.exam_id = exam.id
+                            else:
+                                existing.service = session["service"]
+                        else:
+                            existing.service = session["service"]
+                    await db.commit()
+                else:
+                    # Se tivermos pelo menos o nome, já criamos um rascunho do paciente no painel
+                    if session.get("name"):
+                        new_client = ClientWeb(
+                            name=session["name"],
+                            cpf=str(session.get("cpf") or "000.000.000-00")[:14],
+                            phone=phone,
+                            source=session.get("source", "whatsapp"),
+                            service=session.get("service") if _has_real_service(session) else "Aguardando procedimento",
+                            appointment_date=session.get("appointment_date") if _has_real_service(session) and not session.get("awaiting_slot_confirmation") else None,
+                            status="pending"
+                        )
+                        db.add(new_client)
+                        await db.commit()
+                        logger.info("Criou paciente rascunho no DB incremental.")
+            except Exception as e:
+                logger.error(f"Erro na atualização incremental do DB: {e}")
 
     await sess.save_session(phone, session)

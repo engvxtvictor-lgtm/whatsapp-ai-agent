@@ -84,7 +84,6 @@ async def seed_db():
                 phone="5511988888888",
                 source="whatsapp",
                 service="Clareamento (por sessão)",
-                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo",
                 appointment_date="25/05/2026 as 14:00",
                 upsell_success=True,
                 upsell_service="Raspagem (Limpeza)",
@@ -97,7 +96,6 @@ async def seed_db():
                 phone="5511977777777",
                 source="instagram",
                 service="Raspagem (Limpeza)",
-                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz",
                 appointment_date="28/05/2026 as 10:30",
                 upsell_success=False,
                 upsell_service=None,
@@ -110,7 +108,6 @@ async def seed_db():
                 phone="5511966666666",
                 source="whatsapp",
                 service="Implante",
-                profile_pic="https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe",
                 appointment_date="01/06/2026 as 16:00",
                 upsell_success=True,
                 upsell_service="Pino + Coroa",
@@ -178,7 +175,7 @@ async def seed_db():
         ]
         session.add_all(followups)
 
-        # Criando slots de agendamento padrão (Seg-Sex, 08h às 18h)
+        # Criando slots de agendamento padrão (Seg-Sex dia todo, Sabado pela manha)
         print("Criando slots de agendamento padrao...")
         slots = []
         for weekday in range(5):  # 0=Seg, 4=Sex
@@ -191,6 +188,15 @@ async def seed_db():
                         is_active=True
                     )
                 )
+        for hour in ["08:00", "09:00", "10:00", "11:00"]:
+            slots.append(
+                ScheduleSlotWeb(
+                    weekday=5,
+                    time_str=hour,
+                    max_patients=1,
+                    is_active=True
+                )
+            )
         session.add_all(slots)
         await session.commit()
             

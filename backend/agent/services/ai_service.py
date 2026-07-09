@@ -2,6 +2,7 @@ import re
 import json
 import httpx
 import asyncio
+import unicodedata
 from sqlalchemy import select
 from backend.system.config import settings
 from backend.system.logger import logger
@@ -17,9 +18,49 @@ from backend.agent.services.guardrails import (
 
 
 # ──────────────────────────────────────────────
-# CHAMADA À OPENAI (CHATGPT)
+# CHAMADA À OPENAI (CHATGPT E WHISPER)
 # ──────────────────────────────────────────────
-async def _call_openai(system_prompt: str, messages: list) -> str:
+async def transcribe_audio(audio_base64: str, mime_type: str) -> str:
+    """Transcreve áudio base64 usando Whisper."""
+    if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "sua_chave_openai_aqui":
+        return ""
+    import base64
+    import tempfile
+    import os
+    
+    ext = ".ogg"
+    if "mp3" in mime_type: ext = ".mp3"
+    elif "wav" in mime_type: ext = ".wav"
+    
+    audio_bytes = base64.b64decode(audio_base64)
+    with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as temp_audio:
+        temp_audio.write(audio_bytes)
+        temp_audio_path = temp_audio.name
+        
+    try:
+        url = f"{settings.OPENAI_API_URL}/audio/transcriptions"
+        headers = {"Authorization": f"Bearer {settings.OPENAI_API_KEY}"}
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            with open(temp_audio_path, "rb") as f:
+                # Force standard mime types to prevent OpenAI API from rejecting WhatsApp's specific mime string
+                safe_mime = "audio/mpeg" if ext == ".mp3" else "audio/wav" if ext == ".wav" else "audio/ogg"
+                files = {"file": (f"audio{ext}", f, safe_mime)}
+                data = {"model": "whisper-1"}
+                resp = await client.post(url, headers=headers, files=files, data=data)
+                try:
+                    resp.raise_for_status()
+                except httpx.HTTPStatusError as exc:
+                    logger.error(f"Erro HTTP Whisper: {exc.response.status_code} - {exc.response.text}")
+                    return ""
+                return resp.json().get("text", "")
+    except Exception as e:
+        logger.error(f"Erro Whisper: {e}")
+        return ""
+    finally:
+        if os.path.exists(temp_audio_path):
+            os.remove(temp_audio_path)
+
+async def _call_openai(system_prompt: str, messages: list, media: dict = None) -> str:
     """Chama a API da OpenAI. Retorna o texto da resposta."""
     if not settings.OPENAI_API_KEY or settings.OPENAI_API_KEY == "sua_chave_openai_aqui":
         raise Exception("OPENAI_API_KEY não configurada.")
@@ -29,9 +70,21 @@ async def _call_openai(system_prompt: str, messages: list) -> str:
         "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
         "Content-Type": "application/json"
     }
+    api_messages = [{"role": "system", "content": system_prompt}] + messages
+    
+    if media and media.get("type") == "image":
+        for i in range(len(api_messages)-1, -1, -1):
+            if api_messages[i]["role"] == "user":
+                original_text = api_messages[i]["content"]
+                api_messages[i]["content"] = [
+                    {"type": "text", "text": original_text},
+                    {"type": "image_url", "image_url": {"url": f"data:{media['mimetype']};base64,{media['data']}"}}
+                ]
+                break
+
     payload = {
         "model": settings.OPENAI_MODEL,
-        "messages": [{"role": "system", "content": system_prompt}] + messages,
+        "messages": api_messages,
         "temperature": 0.7,
         "max_tokens": 350,
     }
@@ -176,6 +229,21 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
     - "Carlos Portela" (nome sozinho, primeira mensagem)
     """
     # 1. Padrão com prefixo explícito
+    intent_words = {
+        "gostaria", "queria", "quero", "preciso", "agendar", "marcar", "consulta",
+        "procedimento", "servico", "serviço", "valor", "preco", "preço", "horario",
+        "horário", "limpeza", "clareamento", "implante", "canal", "restauracao",
+        "restauração", "extracao", "extração", "avaliacao", "avaliação"
+    }
+
+    def is_valid_name_candidate(value: str) -> bool:
+        words = [w.lower() for w in re.findall(r"[a-zA-Z\u00C0-\u00FF]+", value)]
+        if len(words) < 2 or len(words) > 5:
+            return False
+        if any(word in intent_words for word in words):
+            return False
+        return len(value.strip()) >= 5 and not value.replace(" ", "").isdigit()
+
     prefix_pattern = re.compile(
         r"(?i)(?:\bmeu nome [eé]|\bme chamo|\baqui [eé] o|\bsou o|\bsou a|\bnome:?)\s+([a-zA-Z\s\u00C0-\u00FF]{3,50})"
     )
@@ -183,7 +251,7 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
         m = prefix_pattern.search(msg)
         if m:
             name = m.group(1).strip().split(",")[0].strip().title()
-            if len(name) >= 3 and not name.replace(" ", "").isdigit():
+            if is_valid_name_candidate(name):
                 return name
 
     # 2. Nome enviado junto com CPF (ex: "carlos portela , 05682727304")
@@ -198,14 +266,14 @@ def _extract_name_from_messages(user_msgs: list, cpf_re: re.Pattern) -> str | No
                 r"(?i)\b(meu nome [eé]|me chamo|aqui [eé] o|sou o|sou a|nome|cpf|olá|ola|ei|oi)\b",
                 "", clean
             ).strip()
-            if len(clean) >= 3 and not clean.replace(" ", "").isdigit():
+            if is_valid_name_candidate(clean):
                 return clean.title()
 
     # 3. Mensagem contendo apenas palavras (possível nome direto)
     for msg in user_msgs[:2]:  # olha só as primeiras mensagens
         stripped = msg.strip()
         # Se parece nome (só letras e espaços, entre 5 e 40 chars, sem números)
-        if re.match(r"^[a-zA-Z\u00C0-\u00FF\s]{5,40}$", stripped):
+        if re.match(r"^[a-zA-Z\u00C0-\u00FF\s]{5,40}$", stripped) and is_valid_name_candidate(stripped):
             return stripped.title()
 
     return None
@@ -236,6 +304,7 @@ def _build_simulated_response(message: str, history: list) -> str:
     # Detecção de Serviço
     service = None
     services_list = ["limpeza", "clareamento", "aparelho", "implante", "canal", "restauração", "extração", "bruxismo", "faceta", "prótese"]
+    services_list.extend(["restauracao", "extracao", "protese"])
     for msg in reversed(user_msgs):
         msg_l = msg.lower()
         for s in services_list:
@@ -304,6 +373,8 @@ def _build_simulated_response(message: str, history: list) -> str:
         response = f"Perfeito, {name}! Já registrei seu interesse em *{service}*. Qual o dia e horário de sua preferência para a consulta?"
     elif name and cpf:
         response = f"Ótimo, {name}! Agora me diz: qual procedimento você tem interesse? Temos Limpeza, Clareamento, Implante e muito mais!"
+    elif service:
+        response = "Perfeito! Para eu agilizar seu cadastro, me informe seu Nome Completo e CPF em uma única mensagem. 😊"
     elif name:
         response = f"Prazer, {name}! 😊 Para eu fazer seu cadastro na recepção, poderia me informar o seu CPF?"
     elif cpf:
@@ -311,8 +382,10 @@ def _build_simulated_response(message: str, history: list) -> str:
     else:
         if not history:
             response = (
-                "Olá! Eu sou a Lúmina, atendente virtual da Clínica Lúmina. 😊\n"
-                "Como posso ajudar você hoje? Se quiser agendar uma consulta, por favor me informe o seu *Nome Completo e CPF* para eu fazer o seu cadastro!"
+                "Olá! 👋✨\n"
+                "Seja bem-vindo(a) à Lumina Clínica Odontológica 🦷✨\n\n"
+                "Será um prazer cuidar do seu sorriso!\n\n"
+                "Como podemos te ajudar hoje?"
             )
         else:
             response = (
@@ -327,12 +400,45 @@ def _build_simulated_response(message: str, history: list) -> str:
     )
 
 
+def _normalize_service_name(value: str | None) -> set[str]:
+    if not value:
+        return set()
+    normalized = unicodedata.normalize("NFD", value.lower())
+    normalized = "".join(ch for ch in normalized if unicodedata.category(ch) != "Mn")
+    words = re.findall(r"[a-z0-9]+", normalized)
+    stopwords = {"de", "da", "do", "das", "dos", "por", "para", "com", "em", "a", "o", "e", "sessao"}
+    return {word for word in words if len(word) > 2 and word not in stopwords}
+
+
+def _services_are_similar(primary_service: str | None, upsell_service: str | None) -> bool:
+    primary_words = _normalize_service_name(primary_service)
+    upsell_words = _normalize_service_name(upsell_service)
+    if not primary_words or not upsell_words:
+        return False
+    overlap = primary_words & upsell_words
+    return bool(overlap) or primary_words.issubset(upsell_words) or upsell_words.issubset(primary_words)
+
+
+def _remove_upsell_offer_text(clean_text: str, upsell_service: str) -> str:
+    paragraphs = re.split(r"\n\s*\n", clean_text.strip())
+    kept = [
+        paragraph for paragraph in paragraphs
+        if upsell_service.lower() not in paragraph.lower()
+        and "aproveitando" not in paragraph.lower()
+        and "complemento" not in paragraph.lower()
+        and "serviço adicional" not in paragraph.lower()
+        and "servico adicional" not in paragraph.lower()
+    ]
+    return "\n\n".join(kept).strip() or clean_text
+
+
 def apply_upsell_guardrail(clean_text: str, metadata: dict | None, valid_exam_names: list[str]) -> tuple[str, dict | None]:
     """Valida o serviço de upsell sugerido pela IA contra os exames reais do banco."""
     if not metadata or not metadata.get("upsell_service"):
         return clean_text, metadata
 
     upsell_service = metadata["upsell_service"]
+    primary_service = metadata.get("service")
     
     # Verifica se o serviço de upsell existe nos exames do banco (case insensitive)
     matched_exam = None
@@ -366,14 +472,21 @@ def apply_upsell_guardrail(clean_text: str, metadata: dict | None, valid_exam_na
         else:
             metadata["upsell_success"] = False
             metadata["upsell_service"] = None
-            
+
+    final_upsell = metadata.get("upsell_service")
+    if final_upsell and _services_are_similar(primary_service, final_upsell):
+        logger.warning(f"Guardrail de Upsell: removendo upsell igual ao serviço principal '{primary_service}' -> '{final_upsell}'")
+        clean_text = _remove_upsell_offer_text(clean_text, final_upsell)
+        metadata["upsell_success"] = False
+        metadata["upsell_service"] = None
+
     return clean_text, metadata
 
 
 # ──────────────────────────────────────────────
 # FUNÇÃO PRINCIPAL
 # ──────────────────────────────────────────────
-async def get_response(message: str, history: list, faq_context: str = "") -> tuple[str, float, dict | None]:
+async def get_response(message: str, history: list, faq_context: str = "", media: dict = None) -> tuple[str, float, dict | None]:
     # 1. Input Guardrail: detecta jailbreak
     if detect_jailbreak(message):
         logger.warning(f"Jailbreak detectado: '{message[:50]}'")
@@ -408,7 +521,17 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
         logger.error(f"Erro ao carregar slots de agenda: {e}")
 
     # 3. Monta o system prompt completo
-    system = SYSTEM_PROMPT
+    system = (
+        SYSTEM_PROMPT
+        + "\n\nREGRA DE HORARIO: O horario correto de funcionamento e segunda a sexta, "
+        "das 08h00 as 12h00 e das 14h00 as 18h00; sabado, das 08h00 as 12h00. "
+        "Nunca ofereca nem aceite horarios no intervalo de almoco, como 12h, 13h ou 13h30, "
+        "nem horarios de sabado a tarde."
+        "\nREGRA DE PRECO: Se o paciente perguntar o valor/preco de um procedimento "
+        "especifico, responda diretamente com o valor desse procedimento usando a lista oficial. "
+        "Nao diga que vai enviar PDF/tabela nesse caso."
+        "\nREGRA DE AVALIACAO: Informe de forma natural, quando fizer sentido, que a avaliacao e gratuita."
+    )
     if services_context:
         system += services_context
     if slots_context:
@@ -420,7 +543,7 @@ async def get_response(message: str, history: list, faq_context: str = "") -> tu
 
     # 4. Orquestração da Redundância (Fallback por Timeout)
     text = None
-    primary_task = asyncio.create_task(_call_openai(system, messages))
+    primary_task = asyncio.create_task(_call_openai(system, messages, media))
     
     try:
         logger.info(f"Chamando Agente Primário ({settings.OPENAI_MODEL}) com timeout de {settings.AI_TIMEOUT_SECONDS}s...")

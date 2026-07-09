@@ -12,7 +12,7 @@
     <!-- FontAwesome para ícones premium -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- CSS Customizado -->
-    <link rel="stylesheet" href="/css/main.css">
+    <link rel="stylesheet" href="/css/main.css?v=16">
     <!-- Correções Visuais de Contraste (À Prova de Cache do Navegador) -->
     <style>
         .btn-secondary-outline {
@@ -107,6 +107,10 @@
                 <a href="#" class="nav-item" data-tab="schedule">
                     <i class="fa-solid fa-calendar-days"></i>
                     <span>Agenda & Horários</span>
+                </a>
+                <a href="#" class="nav-item" data-tab="whatsapp">
+                    <i class="fa-brands fa-whatsapp"></i>
+                    <span>Conexao WhatsApp</span>
                 </a>
                 <a href="#" class="nav-item" data-tab="campaigns">
                     <i class="fa-solid fa-paper-plane"></i>
@@ -309,6 +313,64 @@
                     <!-- Grade de Horários -->
                     <div class="schedule-grid-container" id="schedule-grid-container">
                         <!-- Gerado Dinamicamente por schedule.js -->
+                    </div>
+                </section>
+
+                <!-- ABA 2.8: CONEXAO WHATSAPP -->
+                <section id="tab-whatsapp" class="tab-panel">
+                    <div class="tab-section-header">
+                        <div>
+                            <h3>Conexao WhatsApp</h3>
+                            <p>Conecte, reconecte e monitore o numero do agente sem acessar terminal ou servidor.</p>
+                        </div>
+                        <button class="btn btn-secondary-outline" id="btn-wa-refresh">
+                            <i class="fa-solid fa-rotate"></i> Atualizar Status
+                        </button>
+                    </div>
+
+                    <div class="wa-dashboard">
+                        <div class="wa-status-card">
+                            <div class="wa-status-top">
+                                <span class="wa-status-dot" id="wa-status-dot"></span>
+                                <div>
+                                    <strong id="wa-status-label">Carregando...</strong>
+                                    <p id="wa-status-description">Consultando gateway WhatsApp.</p>
+                                </div>
+                            </div>
+                            <div class="wa-actions">
+                                <button class="btn btn-gold" id="btn-wa-connect"><i class="fa-solid fa-link"></i> Conectar</button>
+                                <button class="btn btn-secondary-outline" id="btn-wa-reconnect"><i class="fa-solid fa-rotate-right"></i> Reconectar</button>
+                                <button class="btn btn-secondary-outline" id="btn-wa-disconnect"><i class="fa-solid fa-repeat"></i> Trocar numero</button>
+                                <button class="btn btn-secondary-outline danger" id="btn-wa-logout"><i class="fa-solid fa-right-from-bracket"></i> Sair da Conta</button>
+                            </div>
+                        </div>
+
+                        <div class="wa-metrics-grid">
+                            <div class="metric-card"><div class="metric-info"><h3>Numero conectado</h3><p id="wa-connected-number">-</p></div><div class="metric-icon wa-bg"><i class="fa-brands fa-whatsapp"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Ultima sincronizacao</h3><p id="wa-updated-at">-</p></div><div class="metric-icon gold-bg"><i class="fa-solid fa-clock"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Ultima atividade</h3><p id="wa-last-activity">-</p></div><div class="metric-icon whatsapp-bg"><i class="fa-solid fa-message"></i></div></div>
+                            <div class="metric-card"><div class="metric-info"><h3>Tempo conectado</h3><p id="wa-uptime">-</p></div><div class="metric-icon ig-bg"><i class="fa-solid fa-stopwatch"></i></div></div>
+                        </div>
+
+                        <div class="wa-main-grid">
+                            <div class="wa-qr-card">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-qrcode gold-text"></i> QR Code</h3>
+                                    <p>Quando a sessao estiver aguardando QR, escaneie aqui pelo WhatsApp correto.</p>
+                                </div>
+                                <div class="wa-qr-box" id="wa-qr-box">
+                                    <span>Nenhum QR Code ativo.</span>
+                                </div>
+                            </div>
+
+                            <div class="wa-log-card">
+                                <div class="panel-header">
+                                    <h3><i class="fa-solid fa-list-check gold-text"></i> Logs recentes</h3>
+                                    <p>Eventos salvos automaticamente durante conexao, reconexao e quedas.</p>
+                                </div>
+                                <div class="wa-log-list" id="wa-log-list"></div>
+                            </div>
+                        </div>
                     </div>
                 </section>
 
@@ -518,6 +580,21 @@
             <form id="form-add-admin">
                 <input type="hidden" id="admin-id">
                 <div class="modal-body">
+                    <div class="form-group avatar-upload-group" style="text-align: center; margin-bottom: 20px;">
+                        <label>Foto de Perfil (Avatar)</label>
+                        <div class="avatar-drag-drop" id="admin-avatar-container" style="border: 2px dashed var(--border-color); border-radius: 50%; width: 100px; height: 100px; margin: 0 auto; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: pointer; position: relative; background: var(--bg-card); transition: all 0.3s ease;">
+                            <img id="admin-avatar-preview" src="" alt="Avatar" style="width: 100%; height: 100%; object-fit: cover; display: none;">
+                            <div class="avatar-placeholder" id="admin-avatar-placeholder" style="color: var(--text-muted); font-size: 24px;">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <div class="avatar-hover-overlay" style="position: absolute; inset: 0; background: rgba(0,0,0,0.5); color: white; display: flex; flex-direction: column; align-items: center; justify-content: center; opacity: 0; transition: opacity 0.3s; font-size: 12px; text-align: center;">
+                                <i class="fa-solid fa-upload"></i>
+                                <span>Trocar</span>
+                            </div>
+                        </div>
+                        <input type="file" id="admin-avatar-input" accept="image/png, image/jpeg, image/jpg" style="display: none;">
+                        <span class="input-tip" style="display: block; margin-top: 8px;">Arraste uma foto ou clique para procurar.</span>
+                    </div>
                     <div class="form-group">
                         <label for="admin-name">Nome Completo</label>
                         <input type="text" id="admin-name" required placeholder="Ex: Dr. Felipe Costa">
@@ -604,6 +681,58 @@
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary-outline" id="btn-cancel-followup-modal">Cancelar</button>
                     <button type="submit" class="btn btn-gold">Criar Automação</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: EDITAR PACIENTE -->
+    <div class="modal" id="modal-edit-client">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3><i class="fa-solid fa-user-pen gold-text"></i> Editar Paciente</h3>
+                <button class="modal-close" id="btn-close-edit-client-modal"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <form id="form-edit-client">
+                <input type="hidden" id="edit-client-id">
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="edit-client-name">Nome do Paciente</label>
+                        <div class="input-with-copy">
+                            <input type="text" id="edit-client-name" required>
+                            <button type="button" class="btn-icon-copy" title="Copiar Nome" onclick="copyToClipboard(document.getElementById('edit-client-name').value)"><i class="fa-regular fa-copy"></i></button>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-client-cpf">CPF</label>
+                            <div class="input-with-copy">
+                                <input type="text" id="edit-client-cpf">
+                                <button type="button" class="btn-icon-copy" title="Copiar CPF" onclick="copyToClipboard(document.getElementById('edit-client-cpf').value)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-client-phone">Telefone (WhatsApp)</label>
+                            <div class="input-with-copy">
+                                <input type="text" id="edit-client-phone" required>
+                                <button type="button" class="btn-icon-copy" title="Copiar Telefone" onclick="copyToClipboard(document.getElementById('edit-client-phone').value)"><i class="fa-regular fa-copy"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="edit-client-service">Serviço Solicitado</label>
+                            <input type="text" id="edit-client-service" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="edit-client-date">Data / Horário de Agendamento</label>
+                            <input type="text" id="edit-client-date">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary-outline" id="btn-cancel-edit-client">Sair</button>
+                    <button type="submit" class="btn btn-gold" id="btn-save-edit-client">Salvar Alterações</button>
                 </div>
             </form>
         </div>
@@ -700,17 +829,20 @@
     <div id="toast-container"></div>
 
     <!-- JS Customizado -->
-    <script src="/js/config.js?v=4"></script>
-    <script src="/js/auth.js?v=4" defer></script>
-    <script src="/js/state.js?v=4" defer></script>
-    <script src="/js/nav.js?v=4" defer></script>
-    <script src="/js/clients.js?v=4" defer></script>
-    <script src="/js/admins.js?v=4" defer></script>
-    <script src="/js/campaigns.js?v=4" defer></script>
-    <script src="/js/modals.js?v=4" defer></script>
-    <script src="/js/followups.js?v=4" defer></script>
-    <script src="/js/exams.js?v=4" defer></script>
-    <script src="/js/schedule.js?v=4" defer></script>
-    <script src="/js/main.js?v=4" defer></script>
+    <script src="/js/config.js?v=7"></script>
+    <script src="/js/common.js?v=7" defer></script>
+    <script src="/js/auth.js?v=7" defer></script>
+    <script src="/js/state.js?v=7" defer></script>
+    <script src="/js/nav.js?v=7" defer></script>
+    <script src="/js/dashboard.js?v=7" defer></script>
+    <script src="/js/clients.js?v=8" defer></script>
+    <script src="/js/admins.js?v=7" defer></script>
+    <script src="/js/campaigns.js?v=7" defer></script>
+    <script src="/js/modals.js?v=7" defer></script>
+    <script src="/js/followups.js?v=7" defer></script>
+    <script src="/js/exams.js?v=7" defer></script>
+    <script src="/js/schedule.js?v=15" defer></script>
+    <script src="/js/whatsapp.js?v=5" defer></script>
+    <script src="/js/main.js?v=7" defer></script>
 </body>
 </html>

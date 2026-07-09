@@ -27,7 +27,6 @@ CREATE TABLE IF NOT EXISTS web_clients (
     phone VARCHAR(20) NOT NULL,
     source VARCHAR(20) DEFAULT 'whatsapp',
     service VARCHAR(50) NOT NULL,
-    profile_pic VARCHAR(255),
     
     -- Novos campos para agendamento e upsell
     appointment_date VARCHAR(100),
@@ -80,6 +79,18 @@ CREATE TABLE IF NOT EXISTS web_followup_logs (
     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Log de lembretes enviados na vespera da consulta
+CREATE TABLE IF NOT EXISTS web_appointment_reminder_logs (
+    id SERIAL PRIMARY KEY,
+    client_id INTEGER NOT NULL REFERENCES web_clients(id) ON DELETE CASCADE,
+    appointment_date DATE NOT NULL,
+    appointment_time VARCHAR(5) NOT NULL,
+    reminder_type VARCHAR(20) NOT NULL,
+    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_appointment_reminder_client_schedule
+        UNIQUE (client_id, appointment_date, appointment_time, reminder_type)
+);
+
 -- Inserção de dados iniciais para testes
 INSERT INTO web_admins (name, email, role, avatar)
 VALUES 
@@ -113,11 +124,10 @@ VALUES
 ('Extração Complexa (Siso)', 300.00, 'Cirurgia')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO web_clients (name, cpf, phone, source, service, profile_pic, appointment_date, upsell_success, upsell_service, status, exam_id)
-VALUES 
-('Rodrigo Silva', '123.456.789-00', '5511988888888', 'whatsapp', 'Clareamento (por sessão)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Rodrigo', '25/05/2026 as 14:00', TRUE, 'Raspagem (Limpeza)', 'confirmed', 13),
-('Beatriz Santos', '987.654.321-11', '5511977777777', 'instagram', 'Raspagem (Limpeza)', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Beatriz', '28/05/2026 as 10:30', FALSE, NULL, 'pending', 1),
-('Felipe Oliveira', '456.789.123-22', '5511966666666', 'whatsapp', 'Implante', 'https://api.dicebear.com/7.x/adventurer/svg?seed=Felipe', '01/06/2026 as 16:00', TRUE, 'Pino + Coroa', 'confirmed', 17)
+INSERT INTO web_clients (name, cpf, phone, source, service, appointment_date, upsell_success, upsell_service, status, exam_id)
+VALUES    ('Rodrigo Silva', '111.111.111-11', '5511999999999', 'whatsapp', 'Clareamento', '2023-11-20 14:00', true, 'Limpeza Dental', 'confirmed', 2),
+    ('Beatriz Costa', '222.222.222-22', '5511888888888', 'instagram', 'Limpeza', '2023-11-22 09:30', false, NULL, 'pending', 1),
+    ('Felipe Santos', '333.333.333-33', '5511777777777', 'whatsapp', 'Avaliação de Implante', NULL, false, NULL, 'pending', 4)
 ON CONFLICT DO NOTHING;
 
 INSERT INTO web_services (name, price, necessity)
@@ -136,7 +146,7 @@ VALUES
 ('Feedback de Sensibilidade', 'Clareamento', 3, 'Olá [NOME], sentiu alguma sensibilidade após a sessão de [SERVIÇO]? Lembre-se de evitar alimentos corantes hoje!', TRUE)
 ON CONFLICT DO NOTHING;
 
--- Inserção de slots na grade (Seg-Sex, 08h às 18h, de hora em hora)
+-- Inserção de slots na grade (Seg-Sex dia todo, Sábado pela manhã)
 INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
 VALUES
 -- Segunda-feira (weekday = 0)
@@ -153,5 +163,7 @@ VALUES
 (3, '14:00', 1, TRUE), (3, '15:00', 1, TRUE), (3, '16:00', 1, TRUE), (3, '17:00', 1, TRUE), (3, '18:00', 1, TRUE),
 -- Sexta-feira (weekday = 4)
 (4, '08:00', 1, TRUE), (4, '09:00', 1, TRUE), (4, '10:00', 1, TRUE), (4, '11:00', 1, TRUE),
-(4, '14:00', 1, TRUE), (4, '15:00', 1, TRUE), (4, '16:00', 1, TRUE), (4, '17:00', 1, TRUE), (4, '18:00', 1, TRUE);
+(4, '14:00', 1, TRUE), (4, '15:00', 1, TRUE), (4, '16:00', 1, TRUE), (4, '17:00', 1, TRUE), (4, '18:00', 1, TRUE),
+-- Sábado (weekday = 5)
+(5, '08:00', 1, TRUE), (5, '09:00', 1, TRUE), (5, '10:00', 1, TRUE), (5, '11:00', 1, TRUE);
 

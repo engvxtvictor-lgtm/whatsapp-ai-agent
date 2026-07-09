@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from backend.system.database import get_db
 from backend.system.models.web_models import ScheduleSlotWeb
-from backend.agent.services.schedule_service import get_available_slots
+from backend.agent.services.schedule_service import get_available_slots, is_business_slot
 from backend.system.logger import logger
 
 router = APIRouter(prefix="/api/slots")
@@ -67,6 +67,11 @@ async def create_slot(data: SlotSchema, db: AsyncSession = Depends(get_db)):
     """Cria um novo slot na grade de horários."""
     if not (0 <= data.weekday <= 6):
         raise HTTPException(status_code=400, detail="weekday deve ser entre 0 (seg) e 6 (dom).")
+    if not is_business_slot(data.weekday, data.time_str):
+        raise HTTPException(
+            status_code=400,
+            detail="Horário fora do funcionamento da clínica: segunda a sexta 08h às 12h e 14h às 18h; sábado 08h às 12h.",
+        )
 
     new_slot = ScheduleSlotWeb(
         weekday=data.weekday,

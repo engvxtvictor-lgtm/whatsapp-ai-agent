@@ -11,7 +11,7 @@
                     <button class="btn-icon" onclick="editAdmin(${admin.id})" style="background:none; border:none; color:var(--gold-primary); cursor:pointer;"><i class="fa-solid fa-pen"></i></button>
                     <button class="btn-icon" onclick="deleteAdmin(${admin.id})" style="background:none; border:none; color:#ef4444; cursor:pointer;"><i class="fa-solid fa-trash"></i></button>
                 </div>
-                <img src="${admin.avatar || 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lumina'}" alt="${admin.name}" class="admin-avatar">
+                <img src="${admin.avatar ? (admin.avatar.startsWith('http') ? admin.avatar : API_BASE + admin.avatar) : 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lumina'}" alt="${admin.name}" class="admin-avatar">
                 <h4 class="admin-name">${admin.name}</h4>
                 <p class="admin-email">${admin.email}</p>
                 <span class="admin-role-badge">${admin.role}</span>
@@ -28,6 +28,21 @@
         document.getElementById("admin-name").value = admin.name;
         document.getElementById("admin-email").value = admin.email;
         document.getElementById("admin-role").value = admin.role;
+        
+        // Carregar a foto existente no preview, se houver, ou caso contrário manter a seed base do avatar
+        const preview = document.getElementById("admin-avatar-preview");
+        const placeholder = document.getElementById("admin-avatar-placeholder");
+        if (preview && placeholder) {
+            if (admin.avatar && admin.avatar !== "") {
+                preview.src = admin.avatar.startsWith('http') ? admin.avatar : API_BASE + admin.avatar;
+                preview.style.display = "block";
+                placeholder.style.display = "none";
+            } else {
+                preview.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${admin.name}`;
+                preview.style.display = "block";
+                placeholder.style.display = "none";
+            }
+        }
         
         document.getElementById("admin-modal-title").innerText = "Editar Administrador";
         document.getElementById("modal-admin").classList.add("active");

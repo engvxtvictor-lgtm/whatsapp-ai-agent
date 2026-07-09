@@ -127,11 +127,10 @@ input:checked + .slider:before {
     transform: translateX(18px);
 }
 
-/* Botão de Excluir Paciente (Lixeira) */
-.btn-delete-client {
+/* Botão de Excluir e Editar Paciente (Lixeira e Lápis) */
+.btn-delete-client, .btn-edit-client {
     position: absolute;
     top: 12px;
-    left: 42px;
     background: none;
     border: none;
     color: rgba(42, 49, 60, 0.25);
@@ -148,7 +147,16 @@ input:checked + .slider:before {
     z-index: 10;
 }
 
-.client-card:hover .btn-delete-client {
+.btn-delete-client {
+    left: 42px;
+}
+
+.btn-edit-client {
+    left: 72px;
+}
+
+.client-card:hover .btn-delete-client,
+.client-card:hover .btn-edit-client {
     opacity: 1;
     pointer-events: all;
 }
@@ -158,8 +166,13 @@ input:checked + .slider:before {
     background-color: rgba(239, 68, 68, 0.1);
 }
 
+.btn-edit-client:hover {
+    color: var(--gold-dark);
+    background-color: rgba(197, 168, 128, 0.1);
+}
+
 @media (hover: none) {
-    .btn-delete-client {
+    .btn-delete-client, .btn-edit-client {
         opacity: 1;
         pointer-events: all;
         color: rgba(42, 49, 60, 0.45);

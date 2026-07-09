@@ -46,6 +46,89 @@ async def run_migrations() -> None:
                 # Coluna já existe — ignorar silenciosamente
                 logger.debug(f"Migração já aplicada (ignorada): {description}")
 
+        # v3: Garante slots de sábado de manhã sem duplicar em bancos já configurados.
+        saturday_hours = ["08:00", "09:00", "10:00", "11:00"]
+        for hour in saturday_hours:
+            try:
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO web_schedule_slots (weekday, time_str, max_patients, is_active)
+                        SELECT 5, CAST(:hour AS VARCHAR), 1, TRUE
+                        WHERE NOT EXISTS (
+                            SELECT 1 FROM web_schedule_slots
+                            WHERE weekday = 5 AND time_str = CAST(:hour AS VARCHAR)
+                        )
+                        """
+                    ),
+                    {"hour": hour},
+                )
+                await session.commit()
+            except Exception as e:
+                await session.rollback()
+                logger.error(f"Erro ao garantir slot de sábado {hour}: {e}")
+
+        # v4: Registra lembretes por consulta para impedir envios duplicados.
+        try:
+            await session.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS web_appointment_reminder_logs (
+                        id SERIAL PRIMARY KEY,
+                        client_id INTEGER NOT NULL
+                            REFERENCES web_clients(id) ON DELETE CASCADE,
+                        appointment_date DATE NOT NULL,
+                        appointment_time VARCHAR(5) NOT NULL,
+                        reminder_type VARCHAR(20) NOT NULL DEFAULT 'day_before',
+                        sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT uq_appointment_reminder_client_schedule
+                            UNIQUE (
+                                client_id,
+                                appointment_date,
+                                appointment_time,
+                                reminder_type
+                            )
+                    )
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    ADD COLUMN IF NOT EXISTS reminder_type VARCHAR(20)
+                    NOT NULL DEFAULT 'day_before'
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    DROP CONSTRAINT IF EXISTS
+                    uq_appointment_reminder_client_schedule
+                    """
+                )
+            )
+            await session.execute(
+                text(
+                    """
+                    ALTER TABLE web_appointment_reminder_logs
+                    ADD CONSTRAINT uq_appointment_reminder_client_schedule
+                    UNIQUE (
+                        client_id,
+                        appointment_date,
+                        appointment_time,
+                        reminder_type
+                    )
+                    """
+                )
+            )
+            await session.commit()
+        except Exception as e:
+            await session.rollback()
+            logger.error(f"Erro ao criar log de lembretes de consulta: {e}")
+
         # Post-migration: Atualizar senhas vazias para 'senha123'
         try:
             import bcrypt

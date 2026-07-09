@@ -1,0 +1,7 @@
+node_modules
+auth
+auth_info
+session
+sessions
+store
+npm-debug.log

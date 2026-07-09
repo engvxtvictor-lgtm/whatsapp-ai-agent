@@ -1,10 +1,15 @@
-from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException
+from fastapi import APIRouter, Depends, BackgroundTasks, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
 import asyncio
+import os
+import uuid
+import aiofiles
+import unicodedata
+from datetime import date
 from backend.system.database import get_db
 from backend.system.dependencies import get_current_admin
 from backend.system.models.web_models import AdminWeb, ClientWeb, ExamWeb, FollowupWeb, FollowupLogWeb, ScheduleSlotWeb
@@ -26,6 +31,7 @@ router = APIRouter(prefix="/api")
 
 from backend.agent.services import whatsapp
 from backend.agent.services import session as sess
+from backend.agent.services import schedule_service
 from backend.agent.services.followup_scheduler import run_followup_check
 from backend.system.logger import logger
 
@@ -40,7 +46,6 @@ class ClientSchema(BaseModel):
     phone: str
     source: str = "whatsapp"
     service: str
-    profile_pic: Optional[str] = None
     
     # Novos campos de agendamento e upsell
     appointment_date: Optional[str] = None
@@ -81,6 +86,52 @@ class CampaignSchema(BaseModel):
     message: str
 
 
+GENERIC_SERVICE_NAMES = {
+    "consulta", "consulta odontologica", "consulta odontológica", "avaliacao",
+    "avaliação", "atendimento", "atendimento humano", "em andamento",
+    "em andamento...", "procedimento", "servico", "serviço", "exame",
+    "aguardando procedimento"
+}
+
+
+def _normalize_label(value: str | None) -> str:
+    if not value:
+        return ""
+    text = unicodedata.normalize("NFD", str(value).strip().lower())
+    text = "".join(ch for ch in text if unicodedata.category(ch) != "Mn")
+    text = " ".join(text.replace(".", " ").replace("-", " ").split())
+    return text
+
+
+def _is_generic_service(value: str | None) -> bool:
+    normalized = _normalize_label(value)
+    return not normalized or normalized in {_normalize_label(item) for item in GENERIC_SERVICE_NAMES}
+
+
+async def resolve_client_slot_data(client_data: ClientSchema):
+    slot_id = None
+    slot_date_obj = None
+
+    if client_data.slot_date:
+        try:
+            slot_date_obj = date.fromisoformat(client_data.slot_date)
+        except ValueError:
+            slot_date_obj = None
+
+    if slot_date_obj and client_data.slot_time:
+        slot = await schedule_service.find_slot_by_date_time(slot_date_obj.isoformat(), client_data.slot_time)
+        if slot:
+            slot_id = slot.id
+    elif client_data.appointment_date:
+        slot, parsed_slot_date, parsed_slot_time = await schedule_service.resolve_slot_from_text(client_data.appointment_date)
+        if parsed_slot_date:
+            slot_date_obj = parsed_slot_date
+        if slot:
+            slot_id = slot.id
+
+    return slot_id, slot_date_obj
+
+
 # Endpoints de Clientes
 @router.get("/clients", response_model=List[ClientSchema])
 async def get_clients(db: AsyncSession = Depends(get_db)):
@@ -103,8 +154,7 @@ async def get_clients(db: AsyncSession = Depends(get_db)):
             cpf=client.cpf,
             phone=client.phone,
             source=client.source,
-            service=client.service,
-            profile_pic=client.profile_pic,
+            service=client.exam.name if client.exam else client.service,
             appointment_date=client.appointment_date,
             slot_date=client.slot_date.isoformat() if client.slot_date else None,
             slot_time=client.slot.time_str if client.slot else None,
@@ -130,6 +180,7 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         exam = exam_res.scalars().first()
         if exam:
             service_name = exam.name
+    slot_id, slot_date_obj = await resolve_client_slot_data(client_data)
 
     new_client = ClientWeb(
         name=client_data.name,
@@ -137,8 +188,9 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         phone=client_data.phone,
         source=client_data.source,
         service=service_name,
-        profile_pic=client_data.profile_pic or f"https://api.dicebear.com/7.x/adventurer/svg?seed={client_data.name}",
         appointment_date=client_data.appointment_date,
+        slot_id=slot_id,
+        slot_date=slot_date_obj,
         upsell_success=client_data.upsell_success,
         upsell_service=client_data.upsell_service,
         status=client_data.status or "pending",
@@ -161,8 +213,7 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
         cpf=new_client.cpf,
         phone=new_client.phone,
         source=new_client.source,
-        service=new_client.service,
-        profile_pic=new_client.profile_pic,
+        service=new_client.exam.name if new_client.exam else new_client.service,
         appointment_date=new_client.appointment_date,
         slot_date=new_client.slot_date.isoformat() if new_client.slot_date else None,
         slot_time=new_client.slot.time_str if new_client.slot else None,
@@ -178,18 +229,104 @@ async def create_client(client_data: ClientSchema, db: AsyncSession = Depends(ge
     return client_schema
 
 
+@router.put("/clients/{client_id}", response_model=ClientSchema)
+async def update_client(client_id: int, client_data: ClientSchema, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id))
+    client = result.scalars().first()
+    if not client:
+        raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+        
+    service_name = client_data.service
+    if client_data.exam_id:
+        exam_res = await db.execute(select(ExamWeb).where(ExamWeb.id == client_data.exam_id))
+        exam = exam_res.scalars().first()
+        if exam:
+            service_name = exam.name
+    slot_id, slot_date_obj = await resolve_client_slot_data(client_data)
+
+    client.name = client_data.name
+    client.cpf = client_data.cpf
+    client.phone = client_data.phone
+    client.service = service_name
+    client.appointment_date = client_data.appointment_date
+    client.slot_id = slot_id
+    client.slot_date = slot_date_obj
+    client.upsell_success = client_data.upsell_success
+    client.upsell_service = client_data.upsell_service
+    client.status = client_data.status or client.status
+    client.exam_id = client_data.exam_id
+    client.needs_human = client_data.needs_human
+    
+    await db.commit()
+    await db.refresh(client)
+    
+    # Reload with relationships
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.exam), selectinload(ClientWeb.slot)).where(ClientWeb.id == client.id)
+    )
+    client = result.scalars().first()
+    
+    return ClientSchema(
+        id=client.id,
+        name=client.name,
+        cpf=client.cpf,
+        phone=client.phone,
+        source=client.source,
+        service=client.exam.name if client.exam else client.service,
+        appointment_date=client.appointment_date,
+        slot_date=client.slot_date.isoformat() if client.slot_date else None,
+        slot_time=client.slot.time_str if client.slot else None,
+        upsell_success=client.upsell_success,
+        upsell_service=client.upsell_service,
+        status=client.status,
+        ai_active=client_data.ai_active,
+        exam_id=client.exam_id,
+        exam_category=client.exam.category if client.exam else None,
+        exam_price=client.exam.price if client.exam else None,
+        needs_human=client.needs_human
+    )
+
+
 @router.put("/clients/{client_id}/confirm")
 async def confirm_appointment(client_id: int, req: ConfirmRequestSchema, db: AsyncSession = Depends(get_db)):
     result = await db.execute(
-        select(ClientWeb).options(selectinload(ClientWeb.slot)).where(ClientWeb.id == client_id)
+        select(ClientWeb).options(selectinload(ClientWeb.slot), selectinload(ClientWeb.exam)).where(ClientWeb.id == client_id)
     )
     client = result.scalars().first()
     if not client:
         raise HTTPException(status_code=404, detail="Cliente nao encontrado.")
-        
+
+    if _is_generic_service(client.service):
+        raise HTTPException(
+            status_code=400,
+            detail="Informe o procedimento/serviço real antes de confirmar este agendamento."
+        )
+
+    if not client.slot_date and client.appointment_date:
+        found_slot, parsed_slot_date, parsed_slot_time = await schedule_service.resolve_slot_from_text(client.appointment_date)
+        if parsed_slot_date:
+            client.slot_date = parsed_slot_date
+        if found_slot:
+            client.slot_id = found_slot.id
+            client.slot = found_slot
+        if parsed_slot_date and parsed_slot_time:
+            client.appointment_date = f"{parsed_slot_date.strftime('%d/%m/%Y')} às {parsed_slot_time}"
+
+    if not client.slot_date or not client.appointment_date or _normalize_label(client.appointment_date) == "pendente":
+        raise HTTPException(
+            status_code=400,
+            detail="Informe uma data e horario validos antes de confirmar este agendamento."
+        )
+
+    if client.exam:
+        client.service = client.exam.name
+
     client.status = "confirmed"
     await db.commit()
-    await db.refresh(client)
+    result = await db.execute(
+        select(ClientWeb).options(selectinload(ClientWeb.slot), selectinload(ClientWeb.exam)).where(ClientWeb.id == client_id)
+    )
+    client = result.scalars().first()
     
     # Formata data de agendamento usando slot_date se disponível
     appointment_text = client.appointment_date
@@ -361,6 +498,30 @@ async def delete_admin(admin_id: int, db: AsyncSession = Depends(get_db)):
     await db.delete(admin)
     await db.commit()
     return {"status": "deleted", "id": admin_id}
+
+
+@router.post("/admins/{admin_id}/avatar", response_model=AdminSchema)
+async def upload_admin_avatar(admin_id: int, file: UploadFile = File(...), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(select(AdminWeb).where(AdminWeb.id == admin_id))
+    admin = result.scalars().first()
+    if not admin:
+        raise HTTPException(status_code=404, detail="Administrador não encontrado.")
+
+    ext = file.filename.split(".")[-1]
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    avatars_dir = os.path.join("uploads", "avatars")
+    os.makedirs(avatars_dir, exist_ok=True)
+    filepath = os.path.join(avatars_dir, filename)
+
+    async with aiofiles.open(filepath, 'wb') as out_file:
+        content = await file.read()
+        await out_file.write(content)
+
+    avatar_url = f"/uploads/avatars/{filename}"
+    admin.avatar = avatar_url
+    await db.commit()
+    await db.refresh(admin)
+    return admin
 
 
 # Rota de Envio de Campanhas
@@ -557,9 +718,47 @@ class ExamSchema(BaseModel):
         from_attributes = True
 
 
+OFFICIAL_EXAMS = [
+    ("Extração Complexa (Siso)", 300.00, "Cirurgia"),
+    ("Extração Simples", 120.00, "Cirurgia"),
+    ("Placa para Bruxismo", 450.00, "Clínico Geral"),
+    ("Restauração", 80.00, "Clínico Geral"),
+    ("Radiografia Periapical", 35.00, "Diagnóstico"),
+    ("Tratamento de Canal", 600.00, "Endodontia"),
+    ("Clareamento (por sessão)", 250.00, "Estética"),
+    ("Facetas (por dente)", 250.00, "Estética"),
+    ("Remoção de Facetas", 300.00, "Estética"),
+    ("Implante", 2800.00, "Implantodontia"),
+    ("Consulta + Aplicação de Flúor Infantil", 50.00, "Odontopediatria"),
+    ("Extração Infantil", 90.00, "Odontopediatria"),
+    ("Restauração Infantil", 70.00, "Odontopediatria"),
+    ("Contenção Ortodôntica Inferior", 200.00, "Ortodontia"),
+    ("Contenção Ortodôntica Superior", 250.00, "Ortodontia"),
+    ("Manutenção Aparelho", 90.00, "Ortodontia"),
+    ("Gengivoplastia (por dente)", 200.00, "Periodontia"),
+    ("Raspagem (Limpeza)", 120.00, "Prevenção"),
+    ("Pino + Coroa", 500.00, "Prótese"),
+    ("Prótese Dentária", 950.00, "Prótese"),
+]
+
+
+async def ensure_official_exams(db: AsyncSession):
+    result = await db.execute(select(ExamWeb))
+    existing_by_name = {exam.name.strip().lower(): exam for exam in result.scalars().all()}
+    missing = [
+        ExamWeb(name=name, price=price, category=category)
+        for name, price, category in OFFICIAL_EXAMS
+        if name.strip().lower() not in existing_by_name
+    ]
+    if missing:
+        db.add_all(missing)
+        await db.commit()
+
+
 # Endpoints de Exames/Procedimentos
 @router.get("/exams", response_model=List[ExamSchema])
 async def get_exams(db: AsyncSession = Depends(get_db)):
+    await ensure_official_exams(db)
     result = await db.execute(select(ExamWeb).order_by(ExamWeb.name.asc()))
     exams = result.scalars().all()
     return exams
@@ -638,11 +837,17 @@ async def get_slots(db: AsyncSession = Depends(get_db)):
         .order_by(ScheduleSlotWeb.weekday, ScheduleSlotWeb.time_str)
     )
     slots = result.scalars().all()
-    return slots
+    return [slot for slot in slots if schedule_service.is_business_slot(slot.weekday, slot.time_str)]
 
 
 @router.post("/slots", response_model=SlotSchema)
 async def create_slot(data: SlotSchema, db: AsyncSession = Depends(get_db)):
+    if not schedule_service.is_business_slot(data.weekday, data.time_str):
+        raise HTTPException(
+            status_code=400,
+            detail="Horário fora do funcionamento da clínica: segunda a sexta 08h às 12h e 14h às 18h; sábado 08h às 12h.",
+        )
+
     new_slot = ScheduleSlotWeb(
         weekday=data.weekday,
         time_str=data.time_str,
